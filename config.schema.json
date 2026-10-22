@@ -179,7 +179,7 @@
     {
       "type": "fieldset",
       "expandable": true,
-      "title": "Keeping positions up to date",
+      "title": "Position",
       "description": "How the plugin learns where shades are. Asking hub is instant and silent. Asking shades goes over radio and briefly wakes their motors.",
       "items": [
         "syncPositionsOnStart",

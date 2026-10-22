@@ -76,8 +76,8 @@ describe('config.schema.json form layout', () => {
         })?.items ?? [],
       );
 
-    it('orders Keeping positions up to date by when each setting acts', () => {
-      expect(section('Keeping positions up to date')).toEqual([
+    it('orders Position by when each setting acts', () => {
+      expect(section('Position')).toEqual([
         'syncPositionsOnStart',
         'pollShadesForUpdate',
         'healSweepIntervalMinutes',
@@ -114,7 +114,7 @@ describe('config.schema.json form layout', () => {
   describe('quiet hours', () => {
     type Section = { type?: string; title?: string; helpvalue?: string; items?: FormItem[] };
     const sections = (schema.form ?? []).filter((i): i is Section => typeof i !== 'string');
-    const positions = sections.find((s) => s.title === 'Keeping positions up to date');
+    const positions = sections.find((s) => s.title === 'Position');
     const items = positions?.items ?? [];
     // Flattened in order; containers without a key (help, flex) are marked by type.
     const flat = (list: FormItem[]): string[] =>
