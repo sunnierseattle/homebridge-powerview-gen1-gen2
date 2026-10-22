@@ -23,16 +23,16 @@
         "placeholder": "powerview-hub.local"
       },
       "refreshShades": {
-        "title": "Refresh on read",
+        "title": "Ask shades on every HomeKit read",
         "type": "boolean",
         "default": false,
-        "description": "Request fresh shade positions from the hub on every HomeKit read."
+        "description": "Off by default. Each time the Home app reads a position, ask shades instead of hub. Wakes a motor every time, even during quiet hours."
       },
       "pollShadesForUpdate": {
-        "title": "Poll every 30 seconds",
+        "title": "Ask hub every 30 seconds",
         "type": "boolean",
         "default": false,
-        "description": "Periodically poll the hub for shade position updates."
+        "description": "Pick up any position changes the hub has stored. Never wakes a motor."
       },
       "strictErrors": {
         "title": "Strict errors",
@@ -41,18 +41,18 @@
         "description": "When enabled, HomeKit reads fail on hub errors instead of returning the last known position."
       },
       "healSweepIntervalMinutes": {
-        "title": "Check all shades every (minutes)",
+        "title": "Ask shades every (minutes)",
         "type": "integer",
         "default": 0,
         "minimum": 0,
-        "description": "0 is off, the default. Otherwise, read every shade over RF at this interval (at least 30 minutes), one at a time, so moves made with a physical remote or the PowerView app show up in HomeKit. Each read wakes a motor; sweeps are skipped during quiet hours. 720 (twice a day) is a reasonable start."
+        "description": "0 is off, the default. Otherwise ask shades, one at a time, at this interval (at least 30), so moves made with a physical remote or the PowerView app show up. 720 (twice a day) is a good start."
       },
       "healSweepGapMs": {
         "title": "Pause between shades (ms)",
         "type": "integer",
         "default": 4000,
         "minimum": 1000,
-        "description": "Pause after each shade in a sweep, so the hub and radio handle one shade at a time.",
+        "description": "Pause after each shade, so hub and radio handle one shade at a time.",
         "condition": {
           "functionBody": "return model.healSweepIntervalMinutes > 0;"
         }
@@ -75,15 +75,15 @@
         }
       },
       "syncPositionsOnStart": {
-        "title": "Sync positions at startup",
+        "title": "Ask shades at startup",
         "type": "boolean",
         "default": true,
-        "description": "Re-read shade positions over RF once when the plugin starts, for shades the hub has no position for. Wakes those motors briefly. Without it, a shade moved by remote can show a stale position indefinitely."
+        "description": "Once, when the plugin starts, ask shades the hub has no position for. Without this, a shade moved by remote can show the wrong position until it next moves."
       },
       "quietHours": {
         "title": "Quiet hours",
         "type": "object",
-        "description": "Local-time window in which the plugin will not actuate hardware. Applies to the startup position sync, so an unattended overnight restart stays silent. Set both to the same hour to disable.",
+        "description": "Hours when the plugin won't ask shades at startup or on the schedule above. Pick the same hour twice to turn this off.",
         "properties": {
           "start": {
             "title": "Quiet from (hour)",
@@ -151,13 +151,19 @@
           "type": "string",
           "title": "Scene name or ID"
         },
-        "description": "Scenes to keep out of HomeKit, such as ones that exist only for a physical remote. Enter the name as the PowerView app shows it (case-insensitive) or the numeric hub scene ID. A scene already in HomeKit is removed."
+        "description": "Scenes to keep out of HomeKit, such as ones that exist only for a physical remote. Enter the name as the PowerView app shows it (case-insensitive) or the numeric hub scene ID. A scene already in HomeKit is removed.",
+        "condition": {
+          "functionBody": "return model.exposeScenes !== false;"
+        }
       },
       "sceneNamePrefix": {
         "title": "Scene name prefix",
         "type": "string",
         "placeholder": "Scene: ",
-        "description": "Text put in front of each scene switch's name, so scenes are easy to tell apart from shades in the Home app. Applies to scenes added from now on; existing switches keep their names."
+        "description": "Text put in front of each scene switch's name, so scenes are easy to tell apart from shades in the Home app. Applies to scenes added from now on; existing switches keep their names.",
+        "condition": {
+          "functionBody": "return model.exposeScenes !== false;"
+        }
       },
       "reportTravel": {
         "title": "Animate shade travel in HomeKit",
@@ -166,5 +172,322 @@
         "description": "Off by default: the tile shows the position you asked for as soon as you tap, which is responsive but is ahead of the shade while it moves. Turn on to keep the tile on the real position and show opening/closing during travel \u2014 truer, but the number does not change for several seconds."
       }
     }
-  }
+  },
+  "form": [
+    "name",
+    "host",
+    {
+      "type": "fieldset",
+      "expandable": true,
+      "title": "Keeping positions up to date",
+      "description": "How the plugin learns where shades are. Asking hub is instant and silent. Asking shades goes over radio and briefly wakes their motors.",
+      "items": [
+        "syncPositionsOnStart",
+        "pollShadesForUpdate",
+        "healSweepIntervalMinutes",
+        "healSweepGapMs",
+        {
+          "type": "help",
+          "helpvalue": "<label class=\"control-label\">Quiet hours</label><p class=\"grey-text help-block small\">Hours when the plugin won't ask shades at startup or on the schedule above. Pick the same hour twice to turn this off.</p>"
+        },
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "items": [
+            {
+              "key": "quietHours.start",
+              "type": "select",
+              "title": "From",
+              "titleMap": [
+                {
+                  "value": 0,
+                  "name": "12 AM"
+                },
+                {
+                  "value": 1,
+                  "name": "1 AM"
+                },
+                {
+                  "value": 2,
+                  "name": "2 AM"
+                },
+                {
+                  "value": 3,
+                  "name": "3 AM"
+                },
+                {
+                  "value": 4,
+                  "name": "4 AM"
+                },
+                {
+                  "value": 5,
+                  "name": "5 AM"
+                },
+                {
+                  "value": 6,
+                  "name": "6 AM"
+                },
+                {
+                  "value": 7,
+                  "name": "7 AM"
+                },
+                {
+                  "value": 8,
+                  "name": "8 AM"
+                },
+                {
+                  "value": 9,
+                  "name": "9 AM"
+                },
+                {
+                  "value": 10,
+                  "name": "10 AM"
+                },
+                {
+                  "value": 11,
+                  "name": "11 AM"
+                },
+                {
+                  "value": 12,
+                  "name": "12 PM"
+                },
+                {
+                  "value": 13,
+                  "name": "1 PM"
+                },
+                {
+                  "value": 14,
+                  "name": "2 PM"
+                },
+                {
+                  "value": 15,
+                  "name": "3 PM"
+                },
+                {
+                  "value": 16,
+                  "name": "4 PM"
+                },
+                {
+                  "value": 17,
+                  "name": "5 PM"
+                },
+                {
+                  "value": 18,
+                  "name": "6 PM"
+                },
+                {
+                  "value": 19,
+                  "name": "7 PM"
+                },
+                {
+                  "value": 20,
+                  "name": "8 PM"
+                },
+                {
+                  "value": 21,
+                  "name": "9 PM"
+                },
+                {
+                  "value": 22,
+                  "name": "10 PM"
+                },
+                {
+                  "value": 23,
+                  "name": "11 PM"
+                }
+              ]
+            },
+            {
+              "key": "quietHours.end",
+              "type": "select",
+              "title": "Until",
+              "titleMap": [
+                {
+                  "value": 0,
+                  "name": "12 AM"
+                },
+                {
+                  "value": 1,
+                  "name": "1 AM"
+                },
+                {
+                  "value": 2,
+                  "name": "2 AM"
+                },
+                {
+                  "value": 3,
+                  "name": "3 AM"
+                },
+                {
+                  "value": 4,
+                  "name": "4 AM"
+                },
+                {
+                  "value": 5,
+                  "name": "5 AM"
+                },
+                {
+                  "value": 6,
+                  "name": "6 AM"
+                },
+                {
+                  "value": 7,
+                  "name": "7 AM"
+                },
+                {
+                  "value": 8,
+                  "name": "8 AM"
+                },
+                {
+                  "value": 9,
+                  "name": "9 AM"
+                },
+                {
+                  "value": 10,
+                  "name": "10 AM"
+                },
+                {
+                  "value": 11,
+                  "name": "11 AM"
+                },
+                {
+                  "value": 12,
+                  "name": "12 PM"
+                },
+                {
+                  "value": 13,
+                  "name": "1 PM"
+                },
+                {
+                  "value": 14,
+                  "name": "2 PM"
+                },
+                {
+                  "value": 15,
+                  "name": "3 PM"
+                },
+                {
+                  "value": 16,
+                  "name": "4 PM"
+                },
+                {
+                  "value": 17,
+                  "name": "5 PM"
+                },
+                {
+                  "value": 18,
+                  "name": "6 PM"
+                },
+                {
+                  "value": 19,
+                  "name": "7 PM"
+                },
+                {
+                  "value": 20,
+                  "name": "8 PM"
+                },
+                {
+                  "value": 21,
+                  "name": "9 PM"
+                },
+                {
+                  "value": 22,
+                  "name": "10 PM"
+                },
+                {
+                  "value": 23,
+                  "name": "11 PM"
+                }
+              ]
+            }
+          ]
+        },
+        "refreshShades",
+        "reportTravel"
+      ],
+      "labelHtmlClass": "fs-5",
+      "labelHelpBlockClass": "grey-text help-block small"
+    },
+    {
+      "type": "fieldset",
+      "expandable": true,
+      "title": "Scenes",
+      "description": "PowerView scenes as HomeKit switches.",
+      "items": [
+        "exposeScenes",
+        {
+          "key": "excludeScenes",
+          "type": "array",
+          "items": [
+            "excludeScenes[]"
+          ],
+          "labelHtmlClass": "fs-6 fw-light",
+          "labelHelpBlockClass": "grey-text help-block small"
+        },
+        "sceneNamePrefix"
+      ],
+      "labelHtmlClass": "fs-5",
+      "labelHelpBlockClass": "grey-text help-block small"
+    },
+    {
+      "type": "fieldset",
+      "expandable": true,
+      "title": "Battery",
+      "description": "Optional daily battery refresh.",
+      "items": [
+        "batteryPolling",
+        "batteryPollAt"
+      ],
+      "labelHtmlClass": "fs-5",
+      "labelHelpBlockClass": "grey-text help-block small"
+    },
+    {
+      "type": "fieldset",
+      "expandable": true,
+      "title": "Advanced",
+      "description": "Rarely needed.",
+      "items": [
+        "strictErrors",
+        "requestIntervalMs",
+        {
+          "key": "forceRollerShades",
+          "type": "array",
+          "items": [
+            "forceRollerShades[]"
+          ],
+          "labelHtmlClass": "fs-6 fw-light",
+          "labelHelpBlockClass": "grey-text help-block small"
+        },
+        {
+          "key": "forceTopBottomShades",
+          "type": "array",
+          "items": [
+            "forceTopBottomShades[]"
+          ],
+          "labelHtmlClass": "fs-6 fw-light",
+          "labelHelpBlockClass": "grey-text help-block small"
+        },
+        {
+          "key": "forceHorizontalShades",
+          "type": "array",
+          "items": [
+            "forceHorizontalShades[]"
+          ],
+          "labelHtmlClass": "fs-6 fw-light",
+          "labelHelpBlockClass": "grey-text help-block small"
+        },
+        {
+          "key": "forceVerticalShades",
+          "type": "array",
+          "items": [
+            "forceVerticalShades[]"
+          ],
+          "labelHtmlClass": "fs-6 fw-light",
+          "labelHelpBlockClass": "grey-text help-block small"
+        }
+      ],
+      "labelHtmlClass": "fs-5",
+      "labelHelpBlockClass": "grey-text help-block small"
+    }
+  ]
 }

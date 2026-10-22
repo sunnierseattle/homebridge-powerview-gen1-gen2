@@ -219,7 +219,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       // no position for — seconds each, five motors on a cold cache — and
       // Homebridge should not sit unlaunched through it.
       void this.syncPositionsAtStartup().catch((err) => {
-        logError(this.log, 'Startup position sync failed:', err);
+        logError(this.log, 'Asking shades at startup failed:', err);
       });
     } catch (err) {
       logError(this.log, 'Failed to start PowerView platform:', err);
@@ -568,20 +568,20 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
    */
   private async syncPositionsAtStartup(): Promise<void> {
     if (!this.syncPositionsOnStart) {
-      this.log.info('Startup position sync: disabled');
+      this.log.info('Asking shades at startup: disabled');
       return;
     }
 
     const { startHour, endHour } = this.quietHours;
     if (isWithinQuietHours(new Date(), startHour, endHour)) {
-      this.log.info('Startup position sync: skipped, quiet hours');
+      this.log.info('Asking shades at startup: skipped, quiet hours');
       return;
     }
 
     let refreshed = 0;
     for (const id of [...this.accessories.keys()]) {
       if (this.shuttingDown) {
-        this.log.debug('Startup position sync abandoned: shutting down');
+        this.log.debug('Asking shades at startup: abandoned, shutting down');
         return;
       }
       try {
@@ -592,11 +592,11 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
         await this.updateShade(id, true);
         refreshed++;
       } catch (err) {
-        logError(this.log, `Startup position sync failed for shade ${id}:`, err);
+        logError(this.log, `Asking shades at startup: failed for shade ${id}:`, err);
       }
     }
 
-    this.log.info('Startup position sync: refreshed %d shade(s) over RF', refreshed);
+    this.log.info('Asking shades at startup: asked %d shade(s)', refreshed);
   }
 
   private scheduleBatteryPoll(): void {
@@ -651,12 +651,12 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
   private async runHealSweep(): Promise<void> {
     const { startHour, endHour } = this.quietHours;
     if (isWithinQuietHours(new Date(), startHour, endHour)) {
-      this.log.info('Heal sweep: skipped during quiet hours');
+      this.log.info('Asking shades on schedule: skipped, quiet hours');
       return;
     }
     // Info, like the battery poll: it moves hardware, so it must be
     // attributable from the default log.
-    this.log.info('Heal sweep: checking %d shades over RF', this.accessories.size);
+    this.log.info('Asking shades on schedule: asking %d shades', this.accessories.size);
     let corrected = 0;
     for (const id of [...this.accessories.keys()]) {
       if (this.shuttingDown) {
@@ -666,17 +666,17 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       try {
         const { positions, timedOut } = await this.updateShade(id, true);
         if (timedOut) {
-          this.log.warn('Heal sweep: shade %d did not answer over RF', id);
+          this.log.warn('Asking shades on schedule: shade %d did not answer', id);
         } else if (!positionMapsEqual(before, positions ?? {})) {
           corrected++;
-          this.log.info('Heal sweep: shade %d was %j, now %j', id, before, positions);
+          this.log.info('Asking shades on schedule: shade %d was %j, now %j', id, before, positions);
         }
       } catch (err) {
-        logError(this.log, `Heal sweep failed for shade ${id}:`, err);
+        logError(this.log, `Asking shades on schedule: failed for shade ${id}:`, err);
       }
       await new Promise((resolve) => setTimeout(resolve, this.healSweepGapMs));
     }
-    this.log.info('Heal sweep: done, %d shade(s) corrected', corrected);
+    this.log.info('Asking shades on schedule: done, %d shade(s) corrected', corrected);
   }
 
   private async pollBatteryLevels(): Promise<void> {

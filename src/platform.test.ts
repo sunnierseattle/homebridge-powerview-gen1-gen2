@@ -862,7 +862,22 @@ describe('PowerViewPlatform healSweepIntervalMinutes', () => {
     await vi.advanceTimersByTimeAsync(61 * 60_000);
 
     expect(rfReads()).toHaveLength(0);
-    expect(harness.log.info).toHaveBeenCalledWith('Heal sweep: skipped during quiet hours');
+    expect(harness.log.info).toHaveBeenCalledWith('Asking shades on schedule: skipped, quiet hours');
+  });
+
+  // Log lines use the same words as the settings page: "ask shades" is an RF
+  // read that wakes motors, "ask hub" is not.
+  it('logs the startup read in the settings page wording', async () => {
+    vi.setSystemTime(new Date(2026, 9, 18, 22, 0, 0));
+    await launch(config({ syncPositionsOnStart: true }));
+    expect(harness.log.info).toHaveBeenCalledWith('Asking shades at startup: skipped, quiet hours');
+  });
+
+  it('logs a scheduled read in the settings page wording', async () => {
+    await launch(config({ healSweepIntervalMinutes: 60 }));
+    await vi.advanceTimersByTimeAsync(61 * 60_000);
+    expect(harness.log.info).toHaveBeenCalledWith('Asking shades on schedule: asking %d shades', 2);
+    expect(harness.log.info).toHaveBeenCalledWith('Asking shades on schedule: done, %d shade(s) corrected', 0);
   });
 
   it('stops partway through on shutdown', async () => {

@@ -7,7 +7,7 @@
 [Hunter Douglas PowerView](https://www.hunterdouglas.com/operating-systems/motorized/powerview-motorization) shades in HomeKit, for **Generation 1 and 2 hubs**.
 
 - **PowerView scenes appear as HomeKit switches**, so a group of shades moves together instead of one at a time.
-- **Your shades stay asleep overnight.** By default, no battery poll or startup sync wakes the motors between 21:00 and 08:00.
+- **Your shades stay asleep overnight.** By default, no battery poll or asking shades at startup wakes the motors between 21:00 and 08:00.
 
 Homebridge 1.8+ and 2.x, Node.js 22 or 24. Generation 3 gateways are not supported.
 
@@ -36,7 +36,7 @@ Generation 1 hub (firmware build 827).
 Forcing a battery reading is a radio round-trip that spins the motor — measured at 3.7s against
 0.08s for a cached read — so on a six-hour cycle one poll always landed overnight whatever time
 Homebridge started. It is now off by default, opt-in, once a day at a time you choose. The
-startup position sync is skipped during configurable quiet hours, so an unattended restart at
+plugin does not ask shades at startup during configurable quiet hours, so an unattended restart at
 03:00 cannot wake five motors.
 
 **It stops the Home app reporting the wrong position.** Positions persist across restarts, so a
@@ -101,15 +101,15 @@ The hub is contacted at `powerview-hub.local` by default.
 | `exposeScenes` | Expose PowerView scenes as HomeKit switches | `true` |
 | `excludeScenes` | Scene names (case-insensitive) or hub IDs to keep out of HomeKit | `[]` |
 | `sceneNamePrefix` | Text put in front of new scene switch names, such as `Scene: ` | `""` |
-| `healSweepIntervalMinutes` | Read every shade over RF at this interval (at least 30), one at a time, skipping quiet hours. `0` is off. Wakes motors | `0` |
-| `healSweepGapMs` | Pause between shades in a sweep | `4000` |
+| `healSweepIntervalMinutes` | Ask shades on this schedule (at least 30 minutes), one at a time, skipping quiet hours. `0` is off. Wakes motors | `0` |
+| `healSweepGapMs` | Pause between shades when asking shades on schedule | `4000` |
 | `batteryPolling` | Force a fresh battery reading daily. Wakes the shade motor | `false` |
 | `batteryPollAt` | Local time for the battery poll, `HH:MM` | `14:00` |
-| `syncPositionsOnStart` | Re-read positions at startup for shades the hub has none for | `true` |
-| `quietHours` | Window in which the startup sync is skipped, so an unattended restart cannot wake shades overnight | `21:00`–`08:00` |
+| `syncPositionsOnStart` | Ask shades at startup that the hub has no position for. Wakes those motors | `true` |
+| `quietHours` | Hours when the plugin won't ask shades at startup or on schedule, so an unattended restart cannot wake shades overnight | `21:00`–`08:00` |
 | `reportTravel` | Animate travel in HomeKit instead of reporting the commanded position at once | `false` |
-| `refreshShades` | Request fresh positions from the hub on every HomeKit read. Wakes motors | `false` |
-| `pollShadesForUpdate` | Poll the hub every 30 seconds for position updates | `false` |
+| `refreshShades` | Ask shades instead of hub on every HomeKit read. Wakes a motor every time, even during quiet hours | `false` |
+| `pollShadesForUpdate` | Ask hub every 30 seconds for any position changes it has stored. Never wakes a motor | `false` |
 | `requestIntervalMs` | Delay between hub requests. Raise it if your hub struggles under load | `100` |
 | `strictErrors` | Fail HomeKit reads on hub errors instead of returning the last known position | `false` |
 | `forceRollerShades` | Shade IDs to treat as roller | `[]` |
@@ -199,12 +199,12 @@ button.
 
 A shade moved with a physical remote or the PowerView app tells HomeKit nothing, and the hub
 forgets positions about an hour after a move, so the Home app can show a stale position
-indefinitely. `pollShadesForUpdate` only reads the hub's cache, so it cannot see these.
+indefinitely. `pollShadesForUpdate` only asks hub, so it cannot see these.
 
-Set `healSweepIntervalMinutes` (for example `720`, twice a day) to read every shade over RF on that
-interval, one at a time with `healSweepGapMs` between them. Sweeps are skipped during
-`quietHours`, and each shade that turns out to be somewhere else is logged and corrected. Every
-read wakes a motor, which is why it is off by default.
+Set `healSweepIntervalMinutes` (for example `720`, twice a day) to ask shades on that schedule,
+one at a time with `healSweepGapMs` between them. This is skipped during `quietHours`, and each
+shade that turns out to be somewhere else is logged and corrected. Asking shades wakes their
+motors, which is why it is off by default.
 
 ### Battery
 

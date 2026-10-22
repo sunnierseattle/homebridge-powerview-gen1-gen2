@@ -19,9 +19,17 @@
   .pv-chip.pv-odd { border-color: var(--bs-warning, #ffc107); }
   .pv-help { font-size: .85em; opacity: .8; }
   details > summary { cursor: pointer; }
+  .pv-more { text-decoration: underline; margin-left: .25rem; }
+  details[open] .pv-more { display: none; }
 </style>
 
 <div class="pv-wrap">
+  <ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item"><button class="nav-link active" type="button" role="tab" data-tab="settings" aria-selected="true">Settings</button></li>
+    <li class="nav-item"><button class="nav-link" type="button" role="tab" data-tab="tools" aria-selected="false">Shade tools</button></li>
+  </ul>
+
+  <div id="pv-tools" hidden>
   <div class="card mb-3">
     <div class="card-body">
       <div class="pv-head mb-2">
@@ -31,18 +39,21 @@
           <button id="pv-reload" class="btn btn-sm btn-outline-secondary ms-2" type="button">Reload</button>
         </div>
       </div>
-      <p class="pv-help mb-2">
-        <b>Check</b> asks the shade over radio where it really is. It takes a few seconds and briefly wakes the motor.
-        <b>Jog</b> wiggles the shade to prove the radio and motor answer.
-        <b>Calibrate</b> runs it fully up and down to relearn its limits, as the PowerView app does. It takes one to two minutes and must not be interrupted.
-        Positions shown without a check are the hub's cached values.
-      </p>
-      <p class="pv-help mb-2">
-        These tools talk to the hub directly, so HomeKit does not hear about them straight away.
-        A check also updates the position the hub keeps. HomeKit catches up the next time the plugin reads the hub:
-        when the shade is next shown in the Home app, or on the next poll if <code>pollShadesForUpdate</code> is on.
-        Each action is written to the Homebridge log.
-      </p>
+      <details class="pv-help mb-2">
+        <summary><b>Check</b> reads a shade over radio, <b>Jog</b> wiggles it, <b>Calibrate</b> relearns its limits. <span class="pv-more">More</span></summary>
+        <p class="mt-2 mb-1">
+          <b>Check</b> asks the shade over radio where it really is. It takes a few seconds and briefly wakes the motor.
+          <b>Jog</b> wiggles the shade to prove the radio and motor answer.
+          <b>Calibrate</b> runs it fully up and down to relearn its limits, as the PowerView app does. It takes one to two minutes and must not be interrupted.
+          Positions shown without a check are the hub's cached values.
+        </p>
+        <p class="mb-0">
+          These tools talk to the hub directly, so HomeKit does not hear about them straight away.
+          A check also updates the position the hub keeps. HomeKit catches up the next time the plugin reads the hub:
+          when the shade is next shown in the Home app, or on the next poll if <code>pollShadesForUpdate</code> is on.
+          Each action is written to the Homebridge log.
+        </p>
+      </details>
       <div class="table-responsive">
         <table class="table table-sm pv-table mb-0">
           <thead>
@@ -67,6 +78,7 @@
         <div id="pv-scenes" class="mt-1"><span class="pv-muted">Open to load.</span></div>
       </details>
     </div>
+  </div>
   </div>
 </div>
 
@@ -284,11 +296,33 @@
     loadShades().then(function () { if (scenesLoaded) loadScenes(); });
   });
 
-  homebridge.addEventListener('ready', async function () {
-    // The normal settings form stays available below the tools.
-    homebridge.showSchemaForm();
-    loadHub();
-    await loadShades();
+  // Config UI X always draws the settings form below this page, so the tools
+  // cannot sit under it. Instead each tab shows one or the other: Settings
+  // shows the form, Shade tools hides it and shows the tools.
+  var toolsEl = document.getElementById('pv-tools');
+  var toolsLoaded = false;
+  function showTab(name) {
+    document.querySelectorAll('[data-tab]').forEach(function (b) {
+      var on = b.getAttribute('data-tab') === name;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    toolsEl.hidden = name !== 'tools';
+    if (name === 'tools') {
+      homebridge.hideSchemaForm();
+      // Shades load on first open, so opening settings costs no hub requests.
+      if (!toolsLoaded) { toolsLoaded = true; loadHub(); loadShades(); }
+    } else {
+      homebridge.showSchemaForm();
+    }
+  }
+  document.querySelector('.nav-tabs').addEventListener('click', function (ev) {
+    var btn = ev.target.closest('[data-tab]');
+    if (btn) showTab(btn.getAttribute('data-tab'));
+  });
+
+  homebridge.addEventListener('ready', function () {
+    showTab('settings');
   });
 })();
 </script>
