@@ -66,6 +66,7 @@ import {
   MIN_VERIFY_DELAY_MS,
   MAX_VERIFY_DELAY_MS,
   MAX_SET_POSITION_DEBOUNCE_MS,
+  STOP_SETTLE_MS,
   FULLY_SUPPORTED_KINDS,
   ShadeKind,
   SUBTYPE,
@@ -78,6 +79,35 @@ function verifyDelay(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value)
     ? Math.min(MAX_VERIFY_DELAY_MS, Math.max(MIN_VERIFY_DELAY_MS, value))
     : VERIFY_DELAY_MS;
+}
+
+interface MotionRecord {
+  /** Start and end of the move in percent, for estimating where a stop lands. */
+  from: number;
+  to: number;
+  start: number;
+  until: number;
+}
+
+interface PendingRetarget {
+  value: number;
+  hubValue: number;
+  callbacks: Array<(error: Error | null) => void>;
+}
+
+/** Where a move is now, assuming constant speed over its estimated travel. */
+function estimatePosition(record: MotionRecord, now: number): number {
+  const span = record.until - record.start;
+  const done = span > 0 ? Math.min(1, Math.max(0, (now - record.start) / span)) : 1;
+  return Math.round(record.from + (record.to - record.from) * done);
+}
+
+/** How long a move from `from` to `to` (percent) is expected to take. */
+function estimateTravelMs(from: number, to: number): number {
+  return Math.max(
+    SHADE_MIN_TRAVEL_MS,
+    Math.round(SHADE_FULL_TRAVEL_MS * Math.abs(to - from) / 100),
+  );
 }
 
 function shadeIdArray(value: unknown): number[] {
@@ -121,6 +151,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
   private readonly verifyAfterMove: boolean;
   private readonly verifyDelayMs: number;
   private readonly setPositionDebounceMs: number;
+  private readonly stopBeforeRetarget: boolean;
   private readonly hubHost: string;
   private readonly refreshShades: boolean;
   private readonly pollShadesForUpdate: boolean;
@@ -146,6 +177,14 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
   private readonly debounced = new Map<string, ReturnType<typeof setTimeout>>();
   /** Travel timers per shade/position, so a re-target cancels the old arrival. */
   private readonly travelTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /**
+   * The last move sent per shade/position and when its estimated travel ends.
+   * Kept whatever `reportTravel` says: it is how stopBeforeRetarget knows a
+   * shade is still moving.
+   */
+  private readonly motion = new Map<string, MotionRecord>();
+  /** Re-targets waiting out a stop, so a burst of commands sends only the last. */
+  private readonly retargets = new Map<string, PendingRetarget>();
   public readonly sceneAccessories = new Map<number, PlatformAccessory<SceneContext>>();
   private readonly batteryRefreshDisabled = new Set<number>();
   private readonly posKindErrorLogged = new Set<number>();
@@ -208,6 +247,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       && config.setPositionDebounceMs > 0
       ? Math.min(config.setPositionDebounceMs, MAX_SET_POSITION_DEBOUNCE_MS)
       : 0;
+    this.stopBeforeRetarget = config.stopBeforeRetarget === true;
     this.refreshShades = config.refreshShades === true;
     this.pollShadesForUpdate = config.pollShadesForUpdate === true;
     this.strictErrors = config.strictErrors === true;
@@ -1075,11 +1115,94 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       return;
     }
 
+    const key = `${shadeId}:${position}`;
+    const waiting = this.retargets.get(key);
+    if (waiting) {
+      // A stop for this shade is settling. Take over its target, so the move
+      // that follows goes straight to the latest one.
+      waiting.value = value;
+      waiting.hubValue = hubValue;
+      waiting.callbacks.push(callback);
+      return;
+    }
+
+    const moving = this.motion.get(key);
+    let from = this.getCachedPosition(shadeId, position) ?? 0;
+    if (
+      this.stopBeforeRetarget
+      && moving && Date.now() < moving.until
+      // Stop halts the whole shade, so it would also cut short a move another
+      // rail or the vanes are making. Re-target without it in that case.
+      && !this.otherPositionMoving(shadeId, position)
+    ) {
+      const pending: PendingRetarget = { value, hubValue, callbacks: [callback] };
+      this.retargets.set(key, pending);
+      // The old move will not arrive, so its timer must not report that it did
+      // while the stop settles.
+      const arrival = this.travelTimers.get(key);
+      if (arrival) {
+        clearTimeout(arrival);
+        this.travelTimers.delete(key);
+      }
+      await this.stopForRetarget(shadeId);
+      this.retargets.delete(key);
+
+      ({ value, hubValue } = pending);
+      from = estimatePosition(moving, Date.now());
+      callback = (error) => {
+        for (const cb of pending.callbacks) {
+          cb(error);
+        }
+      };
+    }
+
+    await this.sendPosition(shadeId, position, key, value, hubValue, from, callback);
+  }
+
+  /**
+   * Stops a moving shade and waits for it to settle before it is re-targeted.
+   *
+   * A new target sent mid-travel reverses or redirects the motor while it is
+   * running. Opt-in because the hub's handling of stop varies by firmware:
+   * build 1056 halts the shade, while build 827 has been seen to ignore it.
+   * Where stop is ignored this costs the settle delay and nothing else.
+   */
+  private async stopForRetarget(shadeId: number): Promise<void> {
+    try {
+      await this.hub.stopShade(shadeId);
+      this.log.info('Shade %d is moving; stopped it before the new target', shadeId);
+    } catch (err) {
+      // Same outcome as without the option: the new target goes out anyway.
+      logError(this.log, `Stop failed for shade ${shadeId}; sending the new target anyway:`, err);
+    }
+    await new Promise((resolve) => setTimeout(resolve, STOP_SETTLE_MS));
+  }
+
+  private otherPositionMoving(shadeId: number, position: HubPosition): boolean {
+    const now = Date.now();
+    for (const [key, record] of this.motion) {
+      if (key.startsWith(`${shadeId}:`) && key !== `${shadeId}:${position}` && now < record.until) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async sendPosition(
+    shadeId: number,
+    position: HubPosition,
+    key: string,
+    value: number,
+    hubValue: number,
+    from: number,
+    callback: (error: Error | null) => void,
+  ): Promise<void> {
     try {
       const handler = this.handlers.get(shadeId);
-      const from = this.getCachedPosition(shadeId, position) ?? 0;
 
       const shade = await this.hub.putShade(shadeId, position, hubValue, value);
+      const start = Date.now();
+      this.motion.set(key, { from, to: value, start, until: start + estimateTravelMs(from, value) });
 
       if (this.reportTravel) {
         // Truer: the hub's PUT reply only echoes the target, so feeding it into
@@ -1295,11 +1418,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       clearTimeout(existing);
     }
 
-    const distance = Math.abs(to - from);
-    const travel = Math.max(
-      SHADE_MIN_TRAVEL_MS,
-      Math.round(SHADE_FULL_TRAVEL_MS * distance / 100),
-    );
+    const travel = estimateTravelMs(from, to);
 
     this.travelTimers.set(key, setTimeout(() => {
       this.travelTimers.delete(key);

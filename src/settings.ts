@@ -39,6 +39,9 @@ export const MAX_VERIFY_DELAY_MS = 300_000;
 /** Ceiling on the slider debounce, so a typo cannot make a tap feel ignored. */
 export const MAX_SET_POSITION_DEBOUNCE_MS = 5_000;
 
+/** Pause between a stop and the move that follows, so the motor is at rest. */
+export const STOP_SETTLE_MS = 2_000;
+
 /** Minimum gap between cheap background reads of the same shade. */
 export const BACKGROUND_REFRESH_INTERVAL_MS = 10_000;
 
@@ -124,6 +127,8 @@ export interface PowerViewPlatformConfig extends PlatformConfig {
   verifyDelayMs?: number;
   /** Send only the last value of a slider drag, after this many ms of rest. 0 disables. */
   setPositionDebounceMs?: number;
+  /** Stop a moving shade before sending it a different target. Firmware-dependent. */
+  stopBeforeRetarget?: boolean;
   /** Expose hub scenes as HomeKit switches. Nothing appears if none are defined. */
   exposeScenes?: boolean;
   /** Scenes to keep out of HomeKit, by name (case-insensitive) or numeric hub id. */

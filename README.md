@@ -114,6 +114,7 @@ The hub is contacted at `powerview-hub.local` by default.
 | `pollShadesForUpdate` | Ask hub every 30 seconds for any position changes it has stored. Never wakes a motor | `false` |
 | `requestIntervalMs` | Delay between hub requests. Raise it if your hub struggles under load | `100` |
 | `setPositionDebounceMs` | Wait this long after the last slider value before moving the shade, so a drag sends one move (max 5000). Every command waits, including taps, Siri and automations. `1500` is a good start | `0` |
+| `stopBeforeRetarget` | Stop a moving shade and let it settle before sending it a different target. Firmware-dependent | `false` |
 | `strictErrors` | Fail HomeKit reads on hub errors instead of returning the last known position | `false` |
 | `forceRollerShades` | Shade IDs to treat as roller | `[]` |
 | `forceTopBottomShades` | Shade IDs to treat as top/bottom | `[]` |
@@ -145,6 +146,20 @@ check is logged as `Asking shades after a move: checking shade 1342`, and a shad
 elsewhere as `Asking shades after a move: shade 1342 was {...}, now {...}` and is shown where it
 really is. The read wakes the motor shortly after it stopped, which is why it is off by default.
 It runs during quiet hours too, since it follows a move someone just made.
+
+### Re-targeting a moving shade
+
+A different target sent while a shade is still travelling reverses or redirects the motor
+mid-move, which happens with repeated remote presses or a slider dragged back and forth.
+
+Set `stopBeforeRetarget` to `true` to send a stop first, wait 2 seconds, and then send the new
+target. Further commands that arrive during the wait are folded in, so only the last one is sent.
+Idle shades are sent their target at once, as before. The stop is skipped when another rail of
+the same shade is still moving, because a stop halts the whole shade.
+
+Whether the hub honours stop depends on its firmware. A build 1056 Gen 2 hub halted a shade 4.7s
+into a full open at 25%. Build 827 has been seen to ignore stop, in which case the option only
+adds the wait.
 
 Example with host and polling:
 
