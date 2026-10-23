@@ -175,7 +175,7 @@
         "title": "Ask shades after a move",
         "type": "boolean",
         "default": false,
-        "description": "Off by default. After a shade is moved, from HomeKit or a scene, ask shades where it ended up, so a motor that stopped short shows its real position instead of the target. One read per shade per burst of moves, so the motor is woken again shortly after it stops, even during quiet hours."
+        "description": "Off by default. After a shade is moved, from HomeKit or a scene, ask shades where it ended up, so a motor that stopped short shows its real position instead of the target. Several moves in a row get one ask, after the last. Shades are asked one at a time, with the pause below between them. This wakes the motor shortly after it stops, even during quiet hours."
       },
       "verifyDelayMs": {
         "title": "Wait before asking (ms)",
@@ -207,13 +207,24 @@
       "title": "Position",
       "description": "How the plugin learns where shades are. Asking hub is instant and silent. Asking shades goes over radio and briefly wakes their motors.",
       "items": [
-        "syncPositionsOnStart",
-        "pollShadesForUpdate",
-        "healSweepIntervalMinutes",
-        "healSweepGapMs",
         {
           "type": "help",
-          "helpvalue": "<label class=\"control-label\">Quiet hours</label><p class=\"grey-text help-block small\">Hours when the plugin won't ask shades at startup or on the schedule above. Asking shades after a move still runs. Pick the same hour twice to turn this off.</p>"
+          "helpvalue": "<div class=\"fw-semibold\">Ask hub</div><p class=\"grey-text help-block small\">Reads the position the hub has stored. Instant, and never wakes a motor.</p>"
+        },
+        "pollShadesForUpdate",
+        {
+          "type": "help",
+          "helpvalue": "<hr><div class=\"fw-semibold\">Ask shades</div><p class=\"grey-text help-block small\">Asks shades over radio where they are. Each ask briefly wakes the motor.</p>"
+        },
+        "syncPositionsOnStart",
+        "healSweepIntervalMinutes",
+        "verifyAfterMove",
+        "verifyDelayMs",
+        "healSweepGapMs",
+        "refreshShades",
+        {
+          "type": "help",
+          "helpvalue": "<hr><div class=\"fw-semibold\">Quiet hours</div><p class=\"grey-text help-block small\">Hours when the plugin won't ask shades at startup or on the schedule above. Asking shades after a move still runs. Pick the same hour twice to turn this off.</p>"
         },
         {
           "type": "flex",
@@ -427,9 +438,10 @@
             }
           ]
         },
-        "verifyAfterMove",
-        "verifyDelayMs",
-        "refreshShades",
+        {
+          "type": "help",
+          "helpvalue": "<hr><div class=\"fw-semibold\">In the Home app</div><p class=\"grey-text help-block small\">How a tile shows a shade while it moves.</p>"
+        },
         "reportTravel"
       ],
       "labelHtmlClass": "fs-5",

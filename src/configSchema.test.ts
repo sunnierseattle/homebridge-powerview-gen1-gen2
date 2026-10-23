@@ -65,9 +65,9 @@ describe('config.schema.json form layout', () => {
     expect(schema.form?.slice(0, 2)).toEqual(['name', 'host']);
   });
 
-  // Settings run in the order they act: once at launch, then ongoing, then
-  // how the tile shows travel. Refresh on read wakes a motor on every HomeKit
-  // read, so it sits with the other rarely-wanted settings.
+  // Position is grouped by what each setting asks: the hub (silent), shades
+  // (over RF, in the order they act), quiet hours, then how the tile shows
+  // travel. The pause sits under "Wait before asking": the two add up.
   describe('setting order', () => {
     const section = (title: string) =>
       rawKeys(
@@ -78,15 +78,15 @@ describe('config.schema.json form layout', () => {
 
     it('orders Position by when each setting acts', () => {
       expect(section('Position')).toEqual([
-        'syncPositionsOnStart',
         'pollShadesForUpdate',
+        'syncPositionsOnStart',
         'healSweepIntervalMinutes',
-        'healSweepGapMs',
-        'quietHours.start',
-        'quietHours.end',
         'verifyAfterMove',
         'verifyDelayMs',
+        'healSweepGapMs',
         'refreshShades',
+        'quietHours.start',
+        'quietHours.end',
         'reportTravel',
       ]);
     });
@@ -129,7 +129,9 @@ describe('config.schema.json form layout', () => {
         return node.key ? [node.key] : [`(${node.type})`, ...flat(node.items ?? [])];
       });
     const keys = flat(items);
-    const helpItem = items.find((i) => typeof i !== 'string' && (i as Section).type === 'help') as Section | undefined;
+    const helpItem = items.find(
+      (i) => typeof i !== 'string' && (i as Section).type === 'help' && /Quiet hours/.test((i as Section).helpvalue ?? ''),
+    ) as Section | undefined;
     type Select = { key?: string; type?: string; title?: string; titleMap?: { value: number; name: string }[] };
     const row = items.find((i) => typeof i !== 'string' && (i as Section).type === 'flex') as { items?: Select[] } | undefined;
 
@@ -137,9 +139,9 @@ describe('config.schema.json form layout', () => {
       expect(sections.some((s) => s.title === 'Quiet hours')).toBe(false);
     });
 
-    it('sits right after the settings it controls', () => {
-      const after = keys.indexOf('healSweepGapMs');
-      expect(after).toBeGreaterThan(keys.indexOf('syncPositionsOnStart'));
+    it('comes right after the ask-shades settings it controls', () => {
+      const after = keys.indexOf('refreshShades');
+      expect(after).toBeGreaterThan(keys.indexOf('healSweepIntervalMinutes'));
       expect(keys.slice(after + 1, after + 5)).toEqual(['(help)', '(flex)', 'quietHours.start', 'quietHours.end']);
     });
 
@@ -199,6 +201,63 @@ describe('config.schema.json form layout', () => {
       for (const c of [...sections, ...lists]) {
         expect(c.labelHelpBlockClass).toBe(FIELD_HELP);
       }
+    });
+  });
+
+  // Position has four groups. Each starts with a help item that draws a small
+  // heading, and every group after the first has a rule above it, so related
+  // settings read as a unit without the weight of a section of their own.
+  describe('Position groups', () => {
+    type Node = { type?: string; key?: string; helpvalue?: string; items?: FormItem[] };
+    const position = (schema.form ?? []).find(
+      (i) => typeof i !== 'string' && (i as { title?: string }).title === 'Position',
+    ) as Node | undefined;
+    const items = position?.items ?? [];
+    const heading = (n: Node) => /<(?:div|p)[^>]*>([^<]+)<\/(?:div|p)>/.exec(n.helpvalue ?? '')?.[1];
+    // Settings under each heading, in order.
+    const groups: { title?: string; keys: string[]; html: string }[] = [];
+    for (const item of items) {
+      const node = item as Node;
+      if (typeof item !== 'string' && node.type === 'help') {
+        groups.push({ title: heading(node), keys: [], html: node.helpvalue ?? '' });
+      } else {
+        groups.at(-1)?.keys.push(...rawKeys([item]));
+      }
+    }
+
+    it('starts with a heading', () => {
+      expect((items[0] as Node).type).toBe('help');
+    });
+
+    it('groups settings by what they ask', () => {
+      expect(groups.map((g) => [g.title, g.keys])).toEqual([
+        ['Ask hub', ['pollShadesForUpdate']],
+        [
+          'Ask shades',
+          [
+            'syncPositionsOnStart',
+            'healSweepIntervalMinutes',
+            'verifyAfterMove',
+            'verifyDelayMs',
+            'healSweepGapMs',
+            'refreshShades',
+          ],
+        ],
+        ['Quiet hours', ['quietHours.start', 'quietHours.end']],
+        ['In the Home app', ['reportTravel']],
+      ]);
+    });
+
+    it('draws a rule above every group but the first', () => {
+      expect(groups[0].html).not.toMatch(/<hr/);
+      for (const g of groups.slice(1)) {
+        expect(g.html.startsWith('<hr')).toBe(true);
+      }
+    });
+
+    it('puts the pause right under the wait it adds to', () => {
+      const keys = rawKeys(items);
+      expect(keys.indexOf('healSweepGapMs')).toBe(keys.indexOf('verifyDelayMs') + 1);
     });
   });
 });
