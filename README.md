@@ -106,7 +106,7 @@ The hub is contacted at `powerview-hub.local` by default.
 | `batteryPolling` | Force a fresh battery reading daily. Wakes the shade motor | `false` |
 | `batteryPollAt` | Local time for the battery poll, `HH:MM` | `14:00` |
 | `syncPositionsOnStart` | Ask shades at startup that the hub has no position for. Wakes those motors | `true` |
-| `quietHours` | Hours when the plugin won't ask shades at startup or on schedule, so an unattended restart cannot wake shades overnight. Asking shades after a move still runs | `21:00`–`08:00` |
+| `quietHours` | Hours when the plugin won't ask shades at startup or on schedule, so an unattended restart cannot wake shades overnight. Asking shades after a move and on every HomeKit read still run | `21:00`–`08:00` |
 | `reportTravel` | Animate travel in HomeKit instead of reporting the commanded position at once | `false` |
 | `verifyAfterMove` | Ask shades after a move where each one ended up, to catch a motor that stopped short. Wakes the motor, even during quiet hours | `false` |
 | `verifyDelayMs` | Wait this long after the last command before asking (5000 to 300000) | `30000` |
