@@ -52,7 +52,7 @@
         "type": "integer",
         "default": 4000,
         "minimum": 1000,
-        "description": "Pause after each shade, so hub and radio handle one shade at a time. Applies to asking shades on schedule and after a move.",
+        "description": "Pause after each shade, so hub and radio handle one shade at a time. Used by both \"Ask shades every (minutes)\" and \"Ask shades after a move\", whichever is on.",
         "condition": {
           "functionBody": "return model.healSweepIntervalMinutes > 0 || model.verifyAfterMove === true;"
         }
@@ -83,7 +83,7 @@
       "quietHours": {
         "title": "Quiet hours",
         "type": "object",
-        "description": "Hours when the plugin won't ask shades at startup or on the schedule above. Asking shades after a move still runs. Pick the same hour twice to turn this off.",
+        "description": "Hours when the plugin won't ask shades at startup or on the schedule above. Two settings still ask during these hours: \"Ask shades after a move\" and \"Ask shades on every HomeKit read\". Pick the same hour twice to turn this off.",
         "properties": {
           "start": {
             "title": "Quiet from (hour)",
@@ -205,7 +205,7 @@
       "type": "fieldset",
       "expandable": true,
       "title": "Position",
-      "description": "How the plugin learns where shades are. Asking hub is instant and silent. Asking shades goes over radio and briefly wakes their motors.",
+      "description": "How the plugin learns where shades are.",
       "items": [
         {
           "type": "help",
@@ -214,7 +214,7 @@
         "pollShadesForUpdate",
         {
           "type": "help",
-          "helpvalue": "<hr><div class=\"fw-semibold\">Ask shades</div><p class=\"grey-text help-block small\">Asks shades over radio where they are. Each ask briefly wakes the motor.</p>"
+          "helpvalue": "<hr><div class=\"fw-semibold\">Ask shades</div><p class=\"grey-text help-block small\">Asks shades over radio where they are. Each shade asked briefly wakes its motor.</p>"
         },
         "syncPositionsOnStart",
         "healSweepIntervalMinutes",
@@ -224,7 +224,7 @@
         "refreshShades",
         {
           "type": "help",
-          "helpvalue": "<hr><div class=\"fw-semibold\">Quiet hours</div><p class=\"grey-text help-block small\">Hours when the plugin won't ask shades at startup or on the schedule above. Asking shades after a move still runs. Pick the same hour twice to turn this off.</p>"
+          "helpvalue": "<hr><div class=\"fw-semibold\">Quiet hours</div><p class=\"grey-text help-block small\">Hours when the plugin won't ask shades at startup or on the schedule above. Two settings still ask during these hours: \"Ask shades after a move\" and \"Ask shades on every HomeKit read\". Pick the same hour twice to turn this off.</p>"
         },
         {
           "type": "flex",

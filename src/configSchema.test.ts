@@ -76,7 +76,7 @@ describe('config.schema.json form layout', () => {
         })?.items ?? [],
       );
 
-    it('orders Position by when each setting acts', () => {
+    it('orders Position by group: hub, shades, quiet hours, Home app', () => {
       expect(section('Position')).toEqual([
         'pollShadesForUpdate',
         'syncPositionsOnStart',
@@ -139,9 +139,8 @@ describe('config.schema.json form layout', () => {
       expect(sections.some((s) => s.title === 'Quiet hours')).toBe(false);
     });
 
-    it('comes right after the ask-shades settings it controls', () => {
+    it('follows the last Ask shades setting, help note first', () => {
       const after = keys.indexOf('refreshShades');
-      expect(after).toBeGreaterThan(keys.indexOf('healSweepIntervalMinutes'));
       expect(keys.slice(after + 1, after + 5)).toEqual(['(help)', '(flex)', 'quietHours.start', 'quietHours.end']);
     });
 
@@ -163,7 +162,23 @@ describe('config.schema.json form layout', () => {
       for (const text of [helpItem?.helpvalue ?? '', prop]) {
         expect(text).toMatch(/ask shades at startup/i);
         expect(text).toMatch(/schedule/i);
-        expect(text).toMatch(/after a move still runs/i);
+      }
+    });
+
+    // A setting that asks shades "even during quiet hours" says so in its own
+    // description; the quiet hours note has to name it too, or the note reads
+    // as if it covers that setting.
+    it('names every setting that still asks shades during quiet hours', () => {
+      const props = schema.schema.properties as Record<string, { title?: string; description?: string }>;
+      const exempt = Object.values(props)
+        .filter((p) => /even during quiet hours/i.test(p.description ?? ''))
+        .map((p) => p.title ?? '');
+      expect(exempt.sort()).toEqual(['Ask shades after a move', 'Ask shades on every HomeKit read']);
+      const prop = (schema.schema.properties.quietHours as { description: string }).description;
+      for (const text of [helpItem?.helpvalue ?? '', prop]) {
+        for (const title of exempt) {
+          expect(text).toContain(`"${title}"`);
+        }
       }
     });
   });
@@ -213,20 +228,37 @@ describe('config.schema.json form layout', () => {
       (i) => typeof i !== 'string' && (i as { title?: string }).title === 'Position',
     ) as Node | undefined;
     const items = position?.items ?? [];
-    const heading = (n: Node) => /<(?:div|p)[^>]*>([^<]+)<\/(?:div|p)>/.exec(n.helpvalue ?? '')?.[1];
+    // A group heading is the bold title a help item draws. Other help notes
+    // stay inside their group instead of starting a new one.
+    const heading = (n: Node) =>
+      /class="fw-semibold"[^>]*>(.*?)<\/div>/.exec(n.helpvalue ?? '')?.[1].replace(/<[^>]+>/g, '');
     // Settings under each heading, in order.
-    const groups: { title?: string; keys: string[]; html: string }[] = [];
+    const groups: { title: string; keys: string[]; html: string }[] = [];
+    const beforeFirstHeading: string[] = [];
     for (const item of items) {
       const node = item as Node;
-      if (typeof item !== 'string' && node.type === 'help') {
-        groups.push({ title: heading(node), keys: [], html: node.helpvalue ?? '' });
+      const title = typeof item !== 'string' && node.type === 'help' ? heading(node) : undefined;
+      if (title) {
+        groups.push({ title, keys: [], html: node.helpvalue ?? '' });
+      } else if (groups.length === 0) {
+        beforeFirstHeading.push(...rawKeys([item]));
       } else {
-        groups.at(-1)?.keys.push(...rawKeys([item]));
+        groups[groups.length - 1].keys.push(...rawKeys([item]));
       }
     }
 
-    it('starts with a heading', () => {
-      expect((items[0] as Node).type).toBe('help');
+    it('puts every setting under a heading', () => {
+      expect(groups.length).toBeGreaterThan(0);
+      expect(beforeFirstHeading).toEqual([]);
+    });
+
+    // The pause belongs to two settings but can only sit next to one, so its
+    // description names both.
+    it('names both settings the pause applies to', () => {
+      const props = schema.schema.properties as Record<string, { title?: string; description?: string }>;
+      const gap = props.healSweepGapMs.description ?? '';
+      expect(gap).toContain(`"${props.healSweepIntervalMinutes.title}"`);
+      expect(gap).toContain(`"${props.verifyAfterMove.title}"`);
     });
 
     it('groups settings by what they ask', () => {
@@ -253,11 +285,6 @@ describe('config.schema.json form layout', () => {
       for (const g of groups.slice(1)) {
         expect(g.html.startsWith('<hr')).toBe(true);
       }
-    });
-
-    it('puts the pause right under the wait it adds to', () => {
-      const keys = rawKeys(items);
-      expect(keys.indexOf('healSweepGapMs')).toBe(keys.indexOf('verifyDelayMs') + 1);
     });
   });
 });
