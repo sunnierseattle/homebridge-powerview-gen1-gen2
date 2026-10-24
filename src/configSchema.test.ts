@@ -228,10 +228,9 @@ describe('config.schema.json form layout', () => {
       (i) => typeof i !== 'string' && (i as { title?: string }).title === 'Position',
     ) as Node | undefined;
     const items = position?.items ?? [];
-    // A group heading is the bold title a help item draws. Other help notes
-    // stay inside their group instead of starting a new one.
-    const heading = (n: Node) =>
-      /class="fw-semibold"[^>]*>(.*?)<\/div>/.exec(n.helpvalue ?? '')?.[1].replace(/<[^>]+>/g, '');
+    // A group heading is the bold, plain-text title a help item draws. Other
+    // help notes stay inside their group instead of starting a new one.
+    const heading = (n: Node) => /class="fw-semibold"[^>]*>([^<]+)<\/div>/.exec(n.helpvalue ?? '')?.[1];
     // Settings under each heading, in order.
     const groups: { title: string; keys: string[]; html: string }[] = [];
     const beforeFirstHeading: string[] = [];
