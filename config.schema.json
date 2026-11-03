@@ -235,7 +235,7 @@
         "title": "Stop a moving shade before re-targeting it",
         "type": "boolean",
         "default": false,
-        "description": "When a shade gets a different target while it is still moving, send it a stop, wait 2 seconds, then send the new target, instead of reversing the motor mid-travel. Idle shades are unaffected. Whether the hub honours stop depends on its firmware: build 1056 does, build 827 has been seen to ignore it, in which case this only adds the 2 second wait."
+        "description": "When a shade gets a different target while it is still moving, send it a stop, wait 2 seconds, then send the new target, instead of reversing the motor mid-travel. Idle shades are unaffected. On a Gen 2 hub, re-targeting a moving shade left it at the wrong position in 3 of 12 trials, and one shade lost track of where it was until calibrated; with this on, 11 of 11 were right. Only applies where stop is on (see Stop command), since Gen 1 hubs ignore stop."
       }
     }
   },

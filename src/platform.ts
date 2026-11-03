@@ -98,6 +98,8 @@ interface PendingRetarget {
   value: number;
   hubValue: number;
   callbacks: Array<(error: Error | null) => void>;
+  /** Set when a user stop arrives during the wait, so the move is not sent. */
+  cancelled?: boolean;
 }
 
 /** Where a move is now, assuming constant speed over its estimated travel. */
@@ -1170,6 +1172,8 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     let from = this.getCachedPosition(shadeId, position) ?? 0;
     if (
       this.stopBeforeRetarget
+      // Only where the hub honours stop; elsewhere it would only add the wait.
+      && this.stopEnabled
       && moving && Date.now() < moving.until
       // Stop halts the whole shade, so it would also cut short a move another
       // rail or the vanes are making. Re-target without it in that case.
@@ -1185,7 +1189,17 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
         this.travelTimers.delete(key);
       }
       await this.stopForRetarget(shadeId);
-      this.retargets.delete(key);
+      if (this.retargets.get(key) === pending) {
+        this.retargets.delete(key);
+      }
+      if (pending.cancelled) {
+        // A stop from the user arrived during the wait. It wins: the shade stays
+        // where it halted, and HomeKit is not left waiting.
+        for (const cb of pending.callbacks) {
+          cb(null);
+        }
+        return;
+      }
 
       ({ value, hubValue } = pending);
       from = estimatePosition(moving, Date.now());
@@ -1203,9 +1217,9 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
    * Stops a moving shade and waits for it to settle before it is re-targeted.
    *
    * A new target sent mid-travel reverses or redirects the motor while it is
-   * running. Opt-in because the hub's handling of stop varies by firmware:
-   * build 1056 halts the shade, while build 827 has been seen to ignore it.
-   * Where stop is ignored this costs the settle delay and nothing else.
+   * running. On build 1056 that left shades at the wrong position (3 of 12
+   * trials), and one lost track of where it was until calibrated; stopping
+   * first got 11 of 11 right. Only used where stop is on (`stopEnabled`).
    */
   private async stopForRetarget(shadeId: number): Promise<void> {
     try {
@@ -1585,6 +1599,19 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     clearTimeout(this.verifyTimers.get(shadeId));
     this.verifyTimers.delete(shadeId);
     this.abandonStopCheck(shadeId);
+    // The shade is no longer moving, so a move after the stop needs no stop of
+    // its own, and a re-target still waiting must not undo this one.
+    for (const key of [...this.motion.keys()]) {
+      if (key.startsWith(prefix)) {
+        this.motion.delete(key);
+      }
+    }
+    for (const [key, pending] of this.retargets) {
+      if (key.startsWith(prefix)) {
+        pending.cancelled = true;
+        this.retargets.delete(key);
+      }
+    }
   }
 
   /** Drops a stop check, whether it is waiting or already reading the shade. */

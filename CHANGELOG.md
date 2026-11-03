@@ -6,6 +6,14 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- **`stopBeforeRetarget`** (default `false`, from PR #3 by Omar Shahine): a different target for a shade
+  still inside its estimated travel is sent as `motion: stop`, a `STOP_SETTLE_MS` (2s) wait, then the
+  new target; commands during the wait fold into the last one. Only where `stopEnabled`. On build 1056,
+  plain mid-travel re-targets went wrong 3 of 12 times (Front Left 30→100 then 20 ended at 0; Front
+  Middle ignored the 20 and finished opening; after a burst 100/0/100/0/50 Front Left read 5% while
+  wide open, and closes did nothing until a calibrate). Stop first: 11 of 11 right on Front Middle and
+  Front Right, one more unanswered, confirmed by eye. A user stop (`cancelPendingMotion`) clears the
+  shade's motion record and drops a re-target still waiting, which answers HomeKit with success.
 - **Stop (`HoldPosition`) is back on Gen 2 hubs, as `stopCommand`** (`auto` | `on` | `off`, default
   `auto`). `auto` resolves through `resolveStopCommand` to on for `generationHint === 'gen2'` and off
   for `gen1` and `unknown`. Measured on 2026-11-03: a build 1056 hub halted Front Left (shade

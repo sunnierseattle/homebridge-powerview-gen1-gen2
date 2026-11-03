@@ -1743,7 +1743,11 @@ describe('PowerViewPlatform stopBeforeRetarget', () => {
 
   type Put = { at: number; shade: { motion?: string; positions?: Record<string, number> } };
 
-  async function ready(cfg = config({ stopBeforeRetarget: true }), shade: Record<string, unknown> = AT_ZERO) {
+  // `stopCommand: 'on'`: this hub double reports no generation, so `auto` would leave stop off.
+  async function ready(
+    cfg = config({ stopBeforeRetarget: true, stopCommand: 'on' }),
+    shade: Record<string, unknown> = AT_ZERO,
+  ) {
     const fetchMock = stubHub([shade]);
     const platform = new PowerViewPlatform(harness.log, cfg, harness.api);
     const done = platform.updateShades();
@@ -1774,6 +1778,53 @@ describe('PowerViewPlatform stopBeforeRetarget', () => {
 
     expect(puts().map((p) => p.shade.motion)).not.toContain('stop');
     expect(puts()).toHaveLength(2);
+  });
+
+  it('does nothing where stop is off, since the hub would ignore it', async () => {
+    const { platform, puts } = await ready(config({ stopBeforeRetarget: true, stopCommand: 'off' }));
+
+    const first = set(platform, 100);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await first.done;
+    const second = set(platform, 20);
+    await vi.advanceTimersByTimeAsync(500);
+    await second.done;
+
+    expect(puts().map((p) => p.shade.motion)).not.toContain('stop');
+    expect(puts()).toHaveLength(2);
+  });
+
+  it('drops a re-target still waiting when the user stops the shade', async () => {
+    const { platform, puts } = await ready();
+
+    const first = set(platform, 100);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await first.done;
+    const second = set(platform, 20);
+    await vi.advanceTimersByTimeAsync(500);
+    const userStop = platform.stopShade(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await Promise.all([second.done, userStop]);
+
+    expect(second.callback).toHaveBeenCalledWith(null);
+    expect(puts().map((p) => p.shade.positions?.position1)).not.toContain(13107);
+  });
+
+  it('sends a move right after a user stop without a stop of its own', async () => {
+    const { platform, puts } = await ready();
+
+    const first = set(platform, 100);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await first.done;
+    const userStop = platform.stopShade(1);
+    await vi.advanceTimersByTimeAsync(500);
+    await userStop;
+    const after = set(platform, 20);
+    await vi.advanceTimersByTimeAsync(500);
+    await after.done;
+
+    expect(puts().filter((p) => p.shade.motion === 'stop')).toHaveLength(1);
+    expect(puts().at(-1)?.shade.positions?.position1).toBe(13107);
   });
 
   it('sends an idle shade its target at once, with no stop', async () => {
