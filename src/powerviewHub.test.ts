@@ -362,6 +362,42 @@ describe('PowerViewHub.stopShade', () => {
   });
 });
 
+describe('PowerViewHub shade queue priority', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  // After Stop Shades, ten RF reads (about 3s each on a Gen 2 hub) sat in the
+  // queue, and a close sent from HomeKit reached the hub 22s later.
+  it('sends a move ahead of RF reads still waiting, after the one in flight', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((url: string) => Promise.resolve(hubResponse({ shade: { id: Number(/shades\/(\d+)/.exec(url)?.[1]) } })));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = hub();
+
+    const all = Promise.all([
+      client.getShade(1, { refresh: true }),
+      client.getShade(2, { refresh: true }),
+      client.getShade(3, { refresh: true }),
+      client.putShade(4, HubPosition.BOTTOM, 0, 0),
+      client.stopShade(5),
+    ]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await all;
+
+    const sent = (fetchMock.mock.calls as unknown as [string, RequestInit?][])
+      .map(([url, init]) => `${init?.method ?? 'GET'} ${new URL(url).pathname}`);
+    expect(sent).toEqual([
+      'GET /api/shades/1',
+      'PUT /api/shades/4',
+      'PUT /api/shades/5',
+      'GET /api/shades/2',
+      'GET /api/shades/3',
+    ]);
+  });
+});
+
 describe('PowerViewHub request priority', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

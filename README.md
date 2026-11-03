@@ -166,9 +166,12 @@ Hold stays on each shade for apps that do show it.
 each shade stopped where its tile stood, then two seconds later asks shades where it halted, twice
 in a row. Two readings that agree are shown. Two that differ mean the shade missed the stop and is
 still moving: it is sent stop once more and checked again, and if it still has not stopped, it is
-asked once more 45 seconds later, when its move is over. A shade can miss a stop (one of five in
-testing missed three of four). The reads wake each motor; a slider value still waiting to be sent
-or a travel animation in progress is dropped so it cannot undo the stop.
+asked once more 45 seconds later, when its move is over. A shade that does not answer is asked
+again rather than stopped again. A shade can miss a stop (one of five in testing missed three of
+four). The reads wake each motor; a slider value still waiting to be sent or a travel animation in
+progress is dropped so it cannot undo the stop. Moving a shade or running a scene after a stop ends
+its check, so the plugin never stops it again, and your command goes ahead of any reads still
+waiting.
 
 Example with host and polling:
 

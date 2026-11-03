@@ -1256,13 +1256,29 @@ describe('PowerViewPlatform stop', () => {
           lastTarget = body.shade.positions;
         }
         if (url.includes('refresh=true')) {
-          const next = refreshes.shift() ?? { positions: { posKind1: 1, position1: HALTED_AT } };
-          return Promise.resolve(jsonResponse({ shade: { ...SHADE, ...next } }));
+          // `delayMs` holds the reply back, as a slow RF read on a real hub does.
+          const { delayMs, ...next } = refreshes.shift() ?? { positions: { posKind1: 1, position1: HALTED_AT } };
+          const reply = jsonResponse({ shade: { ...SHADE, ...next } });
+          return typeof delayMs === 'number'
+            ? new Promise((resolve) => setTimeout(() => resolve(reply), delayMs))
+            : Promise.resolve(reply);
         }
         return Promise.resolve(jsonResponse({ shade: { ...SHADE, positions: lastTarget } }));
       }
       if (url.includes('/api/shades')) {
         return Promise.resolve(jsonResponse({ shadeData: [SHADE], shadeIds: [1] }));
+      }
+      // Scene 7 opens shade 1.
+      if (url.includes('/api/scenemembers')) {
+        return Promise.resolve(jsonResponse({ sceneMemberData: [
+          { id: 1, sceneId: 7, shadeId: 1, positions: { posKind1: 1, position1: 65535 } },
+        ] }));
+      }
+      if (url.includes('sceneId=')) {
+        return Promise.resolve(jsonResponse({ scene: { shadeIds: [1] } }));
+      }
+      if (url.includes('/api/scenes')) {
+        return Promise.resolve(jsonResponse({ sceneIds: [7], sceneData: [{ id: 7, name: 'T3Blbg==' }] }));
       }
       return Promise.resolve(jsonResponse({}));
     });
@@ -1399,17 +1415,136 @@ describe('PowerViewPlatform stop', () => {
 
   it('never shows a timed-out read, which carries the stored target', async () => {
     const timedOut = { positions: { posKind1: 1, position1: 65535 }, timedOut: true };
-    const { platform, service, fetchMock } = await launch(config({ reportTravel: true }), GEN2, [
-      timedOut, timedOut, at(14), at(14),
+    const { platform, service } = await launch(config({ reportTravel: true }), GEN2, [
+      timedOut, at(14), at(14),
     ]);
 
     await stop(platform);
     await vi.advanceTimersByTimeAsync(2_500);
     expect(current(service)).not.toBe(100);
-    expect(stops(fetchMock)).toBe(2);
 
     await vi.advanceTimersByTimeAsync(3_000);
     expect(current(service)).toBe(14);
+  });
+
+  // Right, at rest, timed out once and was stopped a second time for nothing.
+  it('reads again after a timeout instead of stopping again', async () => {
+    const timedOut = { positions: { posKind1: 1, position1: 65535 }, timedOut: true };
+    const { platform, service, fetchMock } = await launch(config(), GEN2, [
+      timedOut, at(14), at(14),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(stops(fetchMock)).toBe(1);
+    expect(current(service)).toBe(14);
+  });
+
+  it('waits out the move when the shade keeps timing out, without stopping again', async () => {
+    const timedOut = { positions: { posKind1: 1, position1: 65535 }, timedOut: true };
+    const { platform, service, fetchMock } = await launch(config(), GEN2, [
+      timedOut, timedOut, timedOut, at(25),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(stops(fetchMock)).toBe(1);
+    expect(current(service)).not.toBe(25);
+
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(stops(fetchMock)).toBe(1);
+    expect(current(service)).toBe(25);
+  });
+
+  // Front Middle was opened 7s after Stop Shades; its stop check then saw it
+  // moving, took it for a missed stop and stopped it again.
+  it('gives way to a move sent after the stop', async () => {
+    const { platform, service, fetchMock } = await launch(config(), GEN2, [
+      at(14), at(40), at(60), at(80),
+    ]);
+
+    await stop(platform);
+    const move = platform.setPosition(1, 1, 80, vi.fn());
+    await vi.advanceTimersByTimeAsync(60_000);
+    await move;
+
+    expect(stops(fetchMock)).toBe(1);
+    expect(current(service)).toBe(80);
+  });
+
+  it('gives way to a move sent while the stop check is reading', async () => {
+    const { platform, service, fetchMock } = await launch(config(), GEN2, [
+      at(14), at(40), at(60), at(80),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(2_050);
+    const move = platform.setPosition(1, 1, 80, vi.fn());
+    await vi.advanceTimersByTimeAsync(60_000);
+    await move;
+
+    expect(stops(fetchMock)).toBe(1);
+    expect(current(service)).toBe(80);
+  });
+
+  it('gives way to a scene activated while the stop check is reading', async () => {
+    const { platform, service, fetchMock } = await launch(config({ exposeScenes: true }), GEN2, [
+      at(14), at(40), at(60), at(80),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(2_050);
+    platform.sceneAccessories.get(7)?.getService(Service.Switch)
+      ?.getCharacteristic(Characteristic.On).setValue(true);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(stops(fetchMock)).toBe(1);
+    expect(current(service)).toBe(100);
+  });
+
+  it('gives way to a slider value still waiting out the debounce', async () => {
+    const { platform, fetchMock } = await launch(config({ setPositionDebounceMs: 3_000 }), GEN2, [
+      at(14), at(40), at(60), at(80),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await platform.setPosition(1, 1, 80, vi.fn());
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(stops(fetchMock)).toBe(1);
+  });
+
+  it('lets a second stop replace the check of the first', async () => {
+    const { platform, service, fetchMock } = await launch(config(), GEN2, [
+      { ...at(40), delayMs: 3_000 }, at(60), at(60), at(60),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(2_100);
+    // Waits behind the slow read, which is already on the wire.
+    const second = platform.stopShade(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await second;
+
+    expect(stops(fetchMock)).toBe(2);
+    expect(current(service)).toBe(60);
+  });
+
+  it('never shows a late final read over a scene activated meanwhile', async () => {
+    const timedOut = { positions: { posKind1: 1, position1: 65535 }, timedOut: true };
+    const { platform, service } = await launch(config({ exposeScenes: true }), GEN2, [
+      timedOut, timedOut, timedOut, { ...at(25), delayMs: 5_000 },
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(2_000 + 45_500);
+    platform.sceneAccessories.get(7)?.getService(Service.Switch)
+      ?.getCharacteristic(Characteristic.On).setValue(true);
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(current(service)).toBe(100);
   });
 
   it('cancels the travel animation, so the shade is not shown arriving later', async () => {

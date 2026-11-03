@@ -26,14 +26,25 @@ All notable changes to this project are documented in this file.
   cached read right after it. It first drops the shade's pending debounced values, travel timers,
   verify and earlier stop check, and marks it STOPPED with target = current. `STOP_SETTLE_MS`
   (2000) later, `confirmStop` reads it twice with `refresh=true`. Readings within
-  `STOP_SETTLED_TOLERANCE` (655, 1%) are applied. Readings that differ, or a read that times out,
-  mean it may still be moving: stop is sent once more and the check repeats; after that it is read
-  once more `STOP_FINAL_READ_MS` (45000) later. A timed-out reply is never applied. Why two reads:
-  Left (17438) missed 3 of 4 stops, and one read 3s after a missed stop showed it midway (43471)
-  while it went on to close.
+  `STOP_SETTLED_TOLERANCE` (655, 1%) are applied. Two readings that differ mean it is still moving:
+  stop is sent once more and the check repeats; after that it is read once more
+  `STOP_FINAL_READ_MS` (45000) later. Why two reads: Left (17438) missed 3 of 4 stops, and one read
+  3s after a missed stop showed it midway (43471) while it went on to close. A timed-out reply is
+  never applied and never counts as moving: the shade is read a third time, and without two answers
+  it waits for the 45s read. On build 1056 a read of a moving shade took 6–7s or hit the 15s
+  timeout, and a single timeout had sent Right a needless second stop.
+- **A new move or scene ends a shade's stop check** (`abandonStopCheck`, a per-shade counter
+  checked after every read). Before, opening Front Middle 12s after Stop Shades let its check read
+  the shade moving, take that for a missed stop and halt it again: it ended at 0% instead of 100%.
 
 ### Fixed
 
+- **A command no longer waits behind queued RF reads.** Shade reads and writes shared one FIFO
+  queue, so after Stop Shades queued ten reads (about 3s each on build 1056), a close sent from
+  HomeKit reached the hub 17–18s later. `queueRequest` now puts a write after the request at the
+  head (which may be on the wire) and any writes already waiting, but ahead of waiting reads. On
+  build 1056 the same sequence went out 1.2s and 2.8s after the tap, and a move sent straight after
+  an RF read was acted on 6 of 6 times.
 - **A move queued after a stop or jog is no longer merged into one queued before it.**
   `putShade` merged a new position into any waiting PUT for the shade, so open → stop → close went
   out as close → stop: the shade stopped instead of closing. A queued motion is now a barrier.

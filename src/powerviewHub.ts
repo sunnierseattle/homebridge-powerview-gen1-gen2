@@ -492,8 +492,21 @@ export class PowerViewHub {
   private queueRequest(queued: QueuedRequest): void {
     if (!this.queue.length) {
       this.scheduleRequest(INITIAL_REQUEST_DELAY_MS);
+      this.queue.push(queued);
+      return;
     }
-    this.queue.push(queued);
+    // A command goes ahead of RF reads still waiting (about 3s each on a Gen 2
+    // hub, up to the timeout for a moving shade), but after the request at the
+    // head, which may already be on the wire, and after commands queued before
+    // it. Reads come last, in order.
+    const firstRead = queued.data
+      ? this.queue.findIndex((q, index) => index > 0 && !q.data)
+      : -1;
+    if (firstRead === -1) {
+      this.queue.push(queued);
+    } else {
+      this.queue.splice(firstRead, 0, queued);
+    }
   }
 
   private scheduleRequest(delay: number): void {
