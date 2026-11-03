@@ -664,7 +664,15 @@ export class PowerViewHub {
     userValue: number,
   ): Promise<PowerViewShade> {
     return new Promise((resolve, reject) => {
-      for (const queued of this.queue) {
+      // A queued motion (stop, jog) is a barrier. Merging into a move queued
+      // before it would send this value first, and the stop would then halt it.
+      let lastMotion = -1;
+      this.queue.forEach((queued, index) => {
+        if (queued.shadeId === shadeId && queued.data?.motion) {
+          lastMotion = index;
+        }
+      });
+      for (const queued of this.queue.slice(lastMotion + 1)) {
         if (queued.shadeId === shadeId && queued.data?.positions) {
           const positions = parsePositionMap(queued.data.positions);
 
@@ -733,6 +741,18 @@ export class PowerViewHub {
       url.toString(),
     );
     return json.sceneMemberData ?? [];
+  }
+
+  /**
+   * Halts a shade mid-travel.
+   *
+   * Only Gen 2 hubs act on it: build 1056 halted shades on both shade firmware
+   * versions tested, while build 827 answers 200 and lets the move finish. The
+   * reply echoes the move's target either way, so it says nothing about where
+   * the shade stopped.
+   */
+  async stopShade(shadeId: number): Promise<PowerViewShade> {
+    return this.motionRequest(shadeId, 'stop');
   }
 
   async jogShade(shadeId: number): Promise<PowerViewShade> {

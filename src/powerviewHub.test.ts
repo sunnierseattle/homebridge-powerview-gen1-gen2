@@ -297,6 +297,53 @@ describe('PowerViewHub shade request coalescing', () => {
   });
 });
 
+describe('PowerViewHub.stopShade', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it('sends motion stop as a PUT to the shade', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(() => Promise.resolve(hubResponse({ shade: { id: 7 } })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const request = hub().stopShade(7);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await request;
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(String(url)).toContain('/api/shades/7');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(String(init.body))).toEqual({ shade: { motion: 'stop' } });
+  });
+
+  // Merging a later move into one queued before the stop would send it first,
+  // and the stop would then halt the move the user asked for last.
+  it('never merges a move queued after a stop into one queued before it', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(() => Promise.resolve(hubResponse({ shade: { id: 1 } })));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = hub();
+
+    const all = Promise.all([
+      client.putShade(1, HubPosition.BOTTOM, 65535, 100),
+      client.stopShade(1),
+      client.putShade(1, HubPosition.BOTTOM, 0, 0),
+    ]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await all;
+
+    const bodies = (fetchMock.mock.calls as unknown as [string, RequestInit][])
+      .map(([, init]) => JSON.parse(String(init.body)) as unknown);
+    expect(bodies).toEqual([
+      { shade: { positions: { posKind1: 1, position1: 65535 } } },
+      { shade: { motion: 'stop' } },
+      { shade: { positions: { posKind1: 1, position1: 0 } } },
+    ]);
+  });
+});
+
 describe('PowerViewHub request priority', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
