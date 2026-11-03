@@ -755,6 +755,25 @@ export class PowerViewHub {
     return this.motionRequest(shadeId, 'stop');
   }
 
+  /**
+   * Stops every shade in a hub group with one command, as the vendor API's
+   * group PUT allows for any motion. Returns the shades the hub addressed.
+   */
+  async stopGroup(groupId: number): Promise<number[] | undefined> {
+    const url = new URL(this.baseUrl('/api/shades'));
+    url.searchParams.set('groupId', String(groupId));
+    const json = await this.fetchJson<{ shadeIds?: number[] }>(
+      url.toString(),
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shade: { motion: 'stop' } }),
+      },
+      RequestPriority.Write,
+    );
+    return Array.isArray(json.shadeIds) ? json.shadeIds : undefined;
+  }
+
   async jogShade(shadeId: number): Promise<PowerViewShade> {
     return this.motionRequest(shadeId, 'jog');
   }

@@ -27,12 +27,15 @@ export const SHADE_FULL_TRAVEL_MS = 20_000;
 /** Floor on an estimated travel, so a tiny nudge still reads as movement. */
 export const SHADE_MIN_TRAVEL_MS = 1_000;
 /**
- * How long after a stop to ask the shade where it halted, and when to ask
- * again if it does not answer. A Gen 2 hub (build 1056) answered correctly at
- * 1-8s after a stop in 9 of 10 trials; the one miss was at 2s.
+ * Reading a shade after a stop. Wait STOP_SETTLE_MS for the motor to come to
+ * rest, then read twice: readings within STOP_SETTLED_TOLERANCE (1%) of each
+ * other mean it halted. A shade can miss a stop (Left missed 3 of 4 on build
+ * 1056), so readings that differ get one more stop, and after that the plugin
+ * waits STOP_FINAL_READ_MS for the move to finish before reading it.
  */
 export const STOP_SETTLE_MS = 2_000;
-export const STOP_RETRY_MS = 5_000;
+export const STOP_SETTLED_TOLERANCE = 655;
+export const STOP_FINAL_READ_MS = 45_000;
 /** Heal sweep bounds: never more often than this, and a gap between shades. */
 export const MIN_HEAL_SWEEP_INTERVAL_MINUTES = 30;
 export const HEAL_SWEEP_GAP_MS = 4_000;
@@ -104,6 +107,11 @@ export const SUBTYPE = {
   TOP: 'top',
 } as const;
 
+/** Context stored on the Stop Shades switch, to tell it from a shade on restore. */
+export interface StopSwitchContext {
+  stopSwitch: true;
+}
+
 /** Context stored on a scene accessory, to tell it from a shade on restore. */
 export interface SceneContext {
   sceneId: number;
@@ -134,6 +142,11 @@ export interface PowerViewPlatformConfig extends PlatformConfig {
    * hubs, which halt a moving shade, and not on Gen 1 hubs, which ignore it.
    */
   stopCommand?: 'auto' | 'on' | 'off';
+  /**
+   * Add a Stop Shades switch that stops every shade. Apple's Home app and Siri
+   * do not offer Hold, but they do offer switches. Only where stop is on.
+   */
+  stopSwitch?: boolean;
   /** Send only the last value of a slider drag, after this many ms of rest. 0 disables. */
   setPositionDebounceMs?: number;
   /** Expose hub scenes as HomeKit switches. Nothing appears if none are defined. */

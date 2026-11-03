@@ -318,6 +318,24 @@ describe('PowerViewHub.stopShade', () => {
     expect(JSON.parse(String(init.body))).toEqual({ shade: { motion: 'stop' } });
   });
 
+  // One RF command for the whole group: stopping shades one by one costs about
+  // 1.6s each on a Gen 2 hub, so the last of five would run on for 8s.
+  it('stops a whole group with one PUT', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(() => Promise.resolve(hubResponse({ shadeIds: [1, 2] })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const request = hub().stopGroup(26693);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await request).toEqual([1, 2]);
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new URL(url).pathname).toBe('/api/shades');
+    expect(new URL(url).searchParams.get('groupId')).toBe('26693');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(String(init.body))).toEqual({ shade: { motion: 'stop' } });
+  });
+
   // Merging a later move into one queued before the stop would send it first,
   // and the stop would then halt the move the user asked for last.
   it('never merges a move queued after a stop into one queued before it', async () => {

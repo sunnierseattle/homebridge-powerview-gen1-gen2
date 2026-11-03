@@ -195,7 +195,16 @@
             ]
           }
         ],
-        "description": "Adds HomeKit's stop (Hold Position) to each shade. Gen 2 hubs halt a moving shade; Gen 1 hubs accept stop and ignore it, so it is off there unless you turn it on. After a stop it asks shades where the shade halted, which wakes its motor once."
+        "description": "Adds HomeKit's stop (Hold Position) to each shade. Gen 2 hubs halt a moving shade; Gen 1 hubs accept stop and ignore it, so it is off there unless you turn it on. Apple's Home app and Siri do not show Hold; use the Stop Shades switch below for them. After a stop it asks shades where the shade halted, which wakes its motor."
+      },
+      "stopSwitch": {
+        "title": "Stop Shades switch",
+        "type": "boolean",
+        "default": false,
+        "description": "Off by default. Adds one switch, Stop Shades, that stops every shade at once (one command per PowerView group), then asks shades where each one halted. Works in the Home app and with Siri (\"turn on Stop Shades\"). Only added where stop is on.",
+        "condition": {
+          "functionBody": "return model.stopCommand !== 'off';"
+        }
       },
       "verifyAfterMove": {
         "title": "Ask shades after a move",
@@ -469,7 +478,8 @@
           "helpvalue": "<hr><div class=\"fw-semibold\">In the Home app</div><p class=\"grey-text help-block small\">How a tile shows a shade while it moves, and stopping it.</p>"
         },
         "reportTravel",
-        "stopCommand"
+        "stopCommand",
+        "stopSwitch"
       ],
       "labelHtmlClass": "fs-5",
       "labelHelpBlockClass": "grey-text help-block small"

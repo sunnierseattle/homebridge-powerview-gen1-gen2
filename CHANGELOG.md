@@ -13,13 +13,24 @@ All notable changes to this project are documented in this file.
   same shades on build 827 went all the way. Cached accessories are configured before the hub is
   probed, so `applyStopSupport` runs again from `updateHubInfo`. It wires both the bottom and top
   Window Covering services, since stop halts the whole shade.
+- **Apple's Home app and Siri do not offer `HoldPosition`** (no stop button; Siri: "Your Front left
+  can't do that", Home app on iOS, 2026-11-03). So **`stopSwitch`** (default `false`) adds one
+  stateless Switch accessory, Stop Shades (context `stopSwitch: true`), registered by
+  `syncStopSwitch` after the probe only when `stopEnabled`, and unregistered when either turns off.
+  It sends one `PUT /api/shades?groupId=` `{"shade":{"motion":"stop"}}` per group
+  (`PowerViewHub.stopGroup`, groups taken from the shade list) and `motion: "stop"` to any shade with
+  no group. On build 1056 a group stop answered in 1.6s with all five shade ids, where five single
+  stops take about 1.6s each.
 - `PowerViewPlatform.stopShade` sends `motion: "stop"` (`PowerViewHub.stopShade`) and never applies
   the reply: on build 1056 it echoes the move's target (65535 after a stop at 14%), and so does a
   cached read right after it. It first drops the shade's pending debounced values, travel timers,
-  verify and earlier stop read, and marks it STOPPED with target = current. `STOP_SETTLE_MS`
-  (2000) later it reads the shade with `refresh=true` and applies that; a timed-out or failed read
-  is retried once after `STOP_RETRY_MS` (5000), and a timed-out reply is never applied. Reads at
-  1-8s after a stop were correct in 9 of 10 trials; the one miss was at 2s.
+  verify and earlier stop check, and marks it STOPPED with target = current. `STOP_SETTLE_MS`
+  (2000) later, `confirmStop` reads it twice with `refresh=true`. Readings within
+  `STOP_SETTLED_TOLERANCE` (655, 1%) are applied. Readings that differ, or a read that times out,
+  mean it may still be moving: stop is sent once more and the check repeats; after that it is read
+  once more `STOP_FINAL_READ_MS` (45000) later. A timed-out reply is never applied. Why two reads:
+  Left (17438) missed 3 of 4 stops, and one read 3s after a missed stop showed it midway (43471)
+  while it went on to close.
 
 ### Fixed
 

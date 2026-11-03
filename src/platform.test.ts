@@ -1344,7 +1344,11 @@ describe('PowerViewPlatform stop', () => {
     expect(current(service)).toBe(14);
   });
 
-  it('asks the shade where it halted, two seconds after the stop', async () => {
+  const stops = (fetchMock: ReturnType<typeof stubStopHub>) => puts(fetchMock)
+    .filter((p) => p.shade.motion === 'stop').length;
+  const at = (percent: number) => ({ positions: { posKind1: 1, position1: Math.round(65535 * percent / 100) } });
+
+  it('waits two seconds, then shows where the shade halted once two reads agree', async () => {
     const { platform, service, fetchMock } = await launch();
     const before = refreshReads(fetchMock);
 
@@ -1353,25 +1357,58 @@ describe('PowerViewPlatform stop', () => {
     expect(refreshReads(fetchMock)).toBe(before);
 
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(refreshReads(fetchMock)).toBe(before + 1);
+    expect(refreshReads(fetchMock)).toBe(before + 2);
+    expect(stops(fetchMock)).toBe(1);
     expect(current(service)).toBe(14);
     expect(target(service)).toBe(14);
     expect(state(service)).toBe(Characteristic.PositionState.STOPPED);
   });
 
-  it('asks once more when the shade does not answer, and ignores the timed-out reply', async () => {
+  // Left (17438) missed 3 of 4 stops on build 1056, and a single read 3s later
+  // showed it midway (43471) while it went on to close. Two reads that differ
+  // mean the shade is still moving, so stop is sent again.
+  it('stops again when two reads show the shade still moving', async () => {
     const { platform, service, fetchMock } = await launch(config(), GEN2, [
-      { positions: { posKind1: 1, position1: 65535 }, timedOut: true },
-      { positions: { posKind1: 1, position1: HALTED_AT } },
+      at(70), at(40), at(30), at(30),
     ]);
-    const before = refreshReads(fetchMock);
 
     await stop(platform);
-    await vi.advanceTimersByTimeAsync(3_000);
-    expect(current(service)).not.toBe(100);
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(current(service)).not.toBe(40);
+    expect(stops(fetchMock)).toBe(2);
 
-    await vi.advanceTimersByTimeAsync(5_000);
-    expect(refreshReads(fetchMock)).toBe(before + 2);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(current(service)).toBe(30);
+    expect(stops(fetchMock)).toBe(2);
+  });
+
+  it('gives up stopping after the second try, and shows where the move ended', async () => {
+    const { platform, service, fetchMock } = await launch(config(), GEN2, [
+      at(70), at(40), at(30), at(10), at(25),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(stops(fetchMock)).toBe(2);
+    expect(current(service)).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(current(service)).toBe(25);
+    expect(stops(fetchMock)).toBe(2);
+  });
+
+  it('never shows a timed-out read, which carries the stored target', async () => {
+    const timedOut = { positions: { posKind1: 1, position1: 65535 }, timedOut: true };
+    const { platform, service, fetchMock } = await launch(config({ reportTravel: true }), GEN2, [
+      timedOut, timedOut, at(14), at(14),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(current(service)).not.toBe(100);
+    expect(stops(fetchMock)).toBe(2);
+
+    await vi.advanceTimersByTimeAsync(3_000);
     expect(current(service)).toBe(14);
   });
 
@@ -1407,5 +1444,145 @@ describe('PowerViewPlatform stop', () => {
     await vi.advanceTimersByTimeAsync(20_000);
 
     expect(await settled).toBe('error');
+  });
+});
+
+describe('PowerViewPlatform stop switch', () => {
+  let harness: Harness;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    harness = createHarness();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  const GEN1 = { name: 'PowerView Hub', revision: 1, subRevision: 1, build: 827 };
+  const GEN2 = { name: 'PV Hub2.0', revision: 2, subRevision: 0, build: 1056 };
+  const shadeAt = (id: number, groupId: number | undefined, position1: number) => ({
+    id, name: 'U2hhZGU=', type: 1, capabilities: 0, groupId, positions: { posKind1: 1, position1 },
+  });
+  // Two shades share group 26693; shade 3 reports no group.
+  const SHADES = [shadeAt(1, 26693, 0), shadeAt(2, 26693, 0), shadeAt(3, undefined, 0)];
+  /** Where each shade halts, as a refresh read reports it. */
+  const HALTED: Record<number, number> = { 1: 13107, 2: 26214, 3: 39321 };
+
+  function stubHub(mainProcessor = GEN2) {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes('/api/userdata')) {
+        return Promise.resolve(jsonResponse({ userData: { hubName: 'SHVi', firmware: { mainProcessor } } }));
+      }
+      if (url.includes('/api/fwversion')) {
+        return Promise.resolve(jsonResponse({ firmware: { mainProcessor } }));
+      }
+      if (url.includes('groupId=')) {
+        return Promise.resolve(jsonResponse({ shadeIds: [1, 2] }));
+      }
+      const match = /\/api\/shades\/(\d+)/.exec(url);
+      if (match) {
+        const id = Number(match[1]);
+        const shade = SHADES.find((s) => s.id === id);
+        const position1 = url.includes('refresh=true') ? HALTED[id] : shade?.positions.position1;
+        return Promise.resolve(jsonResponse({ shade: { ...shade, positions: { posKind1: 1, position1 } } }));
+      }
+      if (url.includes('/api/shades')) {
+        return Promise.resolve(jsonResponse({ shadeData: SHADES, shadeIds: SHADES.map((s) => s.id) }));
+      }
+      if (url.includes('/api/scenes')) {
+        return Promise.resolve(jsonResponse({ sceneData: [], sceneIds: [] }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  async function launch(cfg = config({ stopSwitch: true }), mainProcessor = GEN2, cached: PlatformAccessory[] = []) {
+    const fetchMock = stubHub(mainProcessor);
+    const platform = new PowerViewPlatform(harness.log, cfg, harness.api);
+    for (const accessory of cached) {
+      platform.configureAccessory(accessory);
+    }
+    await harness.emit('didFinishLaunching');
+    await vi.advanceTimersByTimeAsync(5_000);
+    return { platform, fetchMock };
+  }
+
+  const stopSwitches = () => (harness.registered as unknown as PlatformAccessory[])
+    .filter((a) => (a.context as { stopSwitch?: boolean }).stopSwitch === true);
+  const switchOf = (accessory: PlatformAccessory) => {
+    const service = accessory.getService(Service.Switch);
+    if (!service) {
+      throw new Error('no switch service');
+    }
+    return service;
+  };
+  const percent = (platform: PowerViewPlatform, id: number) => platform.accessories.get(id)
+    ?.getServiceById(Service.WindowCovering, SUBTYPE.BOTTOM)
+    ?.getCharacteristic(Characteristic.CurrentPosition).value;
+
+  it('adds a Stop Shades switch when turned on with a Gen 2 hub', async () => {
+    await launch();
+    expect(stopSwitches().map((a) => a.displayName)).toEqual(['Stop Shades']);
+  });
+
+  it('adds no switch unless asked for', async () => {
+    await launch(config());
+    expect(stopSwitches()).toEqual([]);
+  });
+
+  it('adds no switch on a Gen 1 hub, which ignores stop', async () => {
+    await launch(config({ stopSwitch: true }), GEN1);
+    expect(stopSwitches()).toEqual([]);
+  });
+
+  it('removes a cached switch once it is turned off', async () => {
+    const cached = new (harness.api.platformAccessory as unknown as new (n: string, u: string) => PlatformAccessory)(
+      'Stop Shades', 'cached-stop-switch',
+    );
+    (cached.context as { stopSwitch?: boolean }).stopSwitch = true;
+    cached.addService(Service.Switch, 'Stop Shades');
+
+    await launch(config(), GEN2, [cached]);
+
+    expect(harness.unregistered as unknown as PlatformAccessory[]).toContain(cached);
+  });
+
+  it('stops each group with one command and a shade with no group on its own', async () => {
+    const { fetchMock } = await launch();
+    const before = fetchMock.mock.calls.length;
+
+    switchOf(stopSwitches()[0]).getCharacteristic(Characteristic.On).setValue(true);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    const sent = fetchMock.mock.calls.slice(before)
+      .filter(([, i]) => i?.method === 'PUT')
+      .map(([url, i]) => [new URL(String(url)).pathname + new URL(String(url)).search, JSON.parse(String(i?.body))]);
+    expect(sent).toEqual([
+      ['/api/shades?groupId=26693', { shade: { motion: 'stop' } }],
+      ['/api/shades/3', { shade: { motion: 'stop' } }],
+    ]);
+  });
+
+  it('turns itself back off, like a scene switch', async () => {
+    await launch();
+    const on = switchOf(stopSwitches()[0]).getCharacteristic(Characteristic.On);
+
+    on.setValue(true);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(on.value).toBe(false);
+  });
+
+  it('then shows where each shade halted', async () => {
+    const { platform } = await launch();
+
+    switchOf(stopSwitches()[0]).getCharacteristic(Characteristic.On).setValue(true);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect([percent(platform, 1), percent(platform, 2), percent(platform, 3)]).toEqual([20, 40, 60]);
   });
 });

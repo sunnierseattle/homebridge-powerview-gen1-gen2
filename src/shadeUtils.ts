@@ -517,3 +517,31 @@ export function resolveStopCommand(
   }
   return generation === 'gen2';
 }
+
+/**
+ * Whether two hub readings of one shade agree to within `tolerance` (hub units)
+ * on every position. Used after a stop: two reads seconds apart that agree mean
+ * the shade has halted; a shade still moving shows a gap of several percent.
+ */
+export function positionsSettled(
+  a: Record<string, number | undefined> | undefined,
+  b: Record<string, number | undefined> | undefined,
+  tolerance: number,
+): boolean {
+  if (!a || !b) {
+    return false;
+  }
+  const values = (p: Record<string, number | undefined>) => Object.entries(p)
+    .filter(([key]) => key.startsWith('position'))
+    .sort(([x], [y]) => x.localeCompare(y));
+  const left = values(a);
+  const right = values(b);
+  return left.length > 0
+    && left.length === right.length
+    && left.every(([key, value], i) => {
+      const [otherKey, other] = right[i];
+      return key === otherKey
+        && typeof value === 'number' && typeof other === 'number'
+        && Math.abs(value - other) <= tolerance;
+    });
+}

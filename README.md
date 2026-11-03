@@ -110,6 +110,7 @@ The hub is contacted at `powerview-hub.local` by default.
 | `quietHours` | Hours when the plugin won't ask shades at startup or on schedule, so an unattended restart cannot wake shades overnight. Asking shades after a move still runs | `21:00`–`08:00` |
 | `reportTravel` | Animate travel in HomeKit instead of reporting the commanded position at once | `false` |
 | `stopCommand` | Offer stop (HomeKit Hold Position). `auto` offers it on Gen 2 hubs, which halt the shade, and not on Gen 1 hubs, which ignore it. `on` or `off` overrides | `auto` |
+| `stopSwitch` | Add a Stop Shades switch that stops every shade at once. Works in the Home app and with Siri, which do not offer Hold. Only where stop is on | `false` |
 | `verifyAfterMove` | Ask shades after a move where each one ended up, to catch a motor that stopped short. Wakes the motor, even during quiet hours | `false` |
 | `verifyDelayMs` | Wait this long after the last command before asking (5000 to 300000) | `30000` |
 | `refreshShades` | Ask shades instead of hub on every HomeKit read. Wakes a motor every time, even during quiet hours | `false` |
@@ -150,16 +151,24 @@ It runs during quiet hours too, since it follows a move someone just made.
 
 ### Stopping a moving shade
 
-HomeKit's stop is the Hold Position control on a window covering. With it on, Hold sends the hub
-`motion: "stop"`. The hub's reply still names the old target, so the plugin ignores it: it shows
-the shade stopped where the tile stood, then asks shades where it actually halted two seconds
-later (once more after five seconds if the shade does not answer), and shows that. A slider value
-still waiting to be sent, or a travel animation in progress, is dropped so it cannot undo the stop.
+Gen 2 hubs can stop a moving shade; Gen 1 hubs accept the stop command and ignore it. `stopCommand`
+is `auto` by default, which follows the hub's generation from its firmware: on for Gen 2 (tested
+on build 1056), off for Gen 1 (build 827) and off when the generation is unknown.
 
-`stopCommand` is `auto` by default, which follows the hub's generation from its firmware: on for
-Gen 2 (tested on build 1056, where shades on both shade firmware versions stopped), off for Gen 1
-(build 827 accepts the command and lets the shade finish its move) and off when the generation is
-unknown. Whether a HomeKit app shows a stop button for Hold is up to the app.
+**Apple's Home app and Siri cannot stop a shade through HomeKit's stop control (Hold Position).**
+The Home app shows no stop button, and Siri answers that the shade "can't do that". Set
+`stopSwitch` to `true` to add a **Stop Shades** switch instead: it shows in the Home app, works with
+Siri ("turn on Stop Shades") and in automations, and turns itself back off. It stops every shade at
+once, with one command per PowerView group, so they halt together rather than one after another.
+Hold stays on each shade for apps that do show it.
+
+**After a stop**, the hub's reply still names the old target, so the plugin ignores it. It shows
+each shade stopped where its tile stood, then two seconds later asks shades where it halted, twice
+in a row. Two readings that agree are shown. Two that differ mean the shade missed the stop and is
+still moving: it is sent stop once more and checked again, and if it still has not stopped, it is
+asked once more 45 seconds later, when its move is over. A shade can miss a stop (one of five in
+testing missed three of four). The reads wake each motor; a slider value still waiting to be sent
+or a travel animation in progress is dropped so it cannot undo the stop.
 
 Example with host and polling:
 
