@@ -2,6 +2,36 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Stop (`HoldPosition`) is back on Gen 2 hubs, as `stopCommand`** (`auto` | `on` | `off`, default
+  `auto`). `auto` resolves through `resolveStopCommand` to on for `generationHint === 'gen2'` and off
+  for `gen1` and `unknown`. Measured on 2026-11-03: a build 1056 hub halted Front Left (shade
+  firmware 2.2.2754) and Front Middle (1.5.1771) about 5.6s into an open, and they stayed there; the
+  same shades on build 827 went all the way. Cached accessories are configured before the hub is
+  probed, so `applyStopSupport` runs again from `updateHubInfo`. It wires both the bottom and top
+  Window Covering services, since stop halts the whole shade.
+- `PowerViewPlatform.stopShade` sends `motion: "stop"` (`PowerViewHub.stopShade`) and never applies
+  the reply: on build 1056 it echoes the move's target (65535 after a stop at 14%), and so does a
+  cached read right after it. It first drops the shade's pending debounced values, travel timers,
+  verify and earlier stop read, and marks it STOPPED with target = current. `STOP_SETTLE_MS`
+  (2000) later it reads the shade with `refresh=true` and applies that; a timed-out or failed read
+  is retried once after `STOP_RETRY_MS` (5000), and a timed-out reply is never applied. Reads at
+  1-8s after a stop were correct in 9 of 10 trials; the one miss was at 2s.
+
+### Fixed
+
+- **A move queued after a stop or jog is no longer merged into one queued before it.**
+  `putShade` merged a new position into any waiting PUT for the shade, so open → stop → close went
+  out as close → stop: the shade stopped instead of closing. A queued motion is now a barrier.
+
+### Changed
+
+- The `generationHintFromFirmware` comment said Gen 2 hubs report `mainProcessor.name` "PowerView
+  Hub". A build 1056 hub reports "PV Hub2.0" (which `generationHintFromHubName` already matches).
+
 ## [5.2.1] - 2026-10-22
 
 ### Changed

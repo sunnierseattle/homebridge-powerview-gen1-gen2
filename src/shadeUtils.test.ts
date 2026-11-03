@@ -10,6 +10,7 @@ import {
   isWithinQuietHours,
   resolveHubHost,
   resolveShadeCapability,
+  resolveStopCommand,
   shadeKindForCapability,
   lookupPosition,
   msUntilNextDailyRun,
@@ -537,5 +538,35 @@ describe('resolveHubHost', () => {
   it('falls back when unset or empty', () => {
     expect(resolveHubHost(undefined, 'default')).toBe('default');
     expect(resolveHubHost('   ', 'default')).toBe('default');
+  });
+});
+
+describe('resolveStopCommand', () => {
+  // Stop was measured on real hubs: build 827 (Gen 1) answers 200 and lets the
+  // shade finish its move; build 1056 (Gen 2) halts it. "auto" follows that.
+  it('turns stop on for a Gen 2 hub by default', () => {
+    expect(resolveStopCommand(undefined, 'gen2')).toBe(true);
+    expect(resolveStopCommand('auto', 'gen2')).toBe(true);
+  });
+
+  it('leaves stop off for a Gen 1 hub by default', () => {
+    expect(resolveStopCommand(undefined, 'gen1')).toBe(false);
+    expect(resolveStopCommand('auto', 'gen1')).toBe(false);
+  });
+
+  it('leaves stop off while the generation is unknown', () => {
+    expect(resolveStopCommand('auto', 'unknown')).toBe(false);
+    expect(resolveStopCommand('auto', undefined)).toBe(false);
+  });
+
+  it('lets the user force it either way', () => {
+    expect(resolveStopCommand('on', 'gen1')).toBe(true);
+    expect(resolveStopCommand('on', undefined)).toBe(true);
+    expect(resolveStopCommand('off', 'gen2')).toBe(false);
+  });
+
+  it('treats an unrecognised value as auto', () => {
+    expect(resolveStopCommand('sometimes', 'gen2')).toBe(true);
+    expect(resolveStopCommand(true, 'gen1')).toBe(false);
   });
 });

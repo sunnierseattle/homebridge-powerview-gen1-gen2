@@ -82,13 +82,31 @@ describe('PowerViewPlatformAccessory', () => {
       .toBe(75);
   });
 
-  it('does not offer HoldPosition, which the hub cannot honour', () => {
+  it('does not offer HoldPosition before the hub is known to honour it', () => {
     // motion "stop" is answered 200 and ignored on build 827: a shade told to
-    // stop 6s into travel went all the way. Offering Hold claims a stop that
-    // never happens.
+    // stop 6s into travel went all the way. Until the hub generation is known,
+    // offering Hold could claim a stop that never happens.
     const { accessory } = handlerFor(ShadeKind.ROLLER);
 
     expect(bottomService(accessory).testCharacteristic(Characteristic.HoldPosition)).toBe(false);
+  });
+
+  it('offers HoldPosition when stop is turned on', () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(hubResponse(({}), 200, 'application/json')));
+    const forced = new PowerViewPlatform(
+      harness.log,
+      { ...config(), stopCommand: 'on' } as PowerViewPlatformConfig,
+      harness.api,
+    );
+    const accessory = harness.newAccessory('Shade 1', {
+      shadeId: 1,
+      shadeType: ShadeKind.ROLLER,
+      jogSupported: true,
+    });
+
+    new PowerViewPlatformAccessory(forced, accessory, harness.log);
+
+    expect(bottomService(accessory).testCharacteristic(Characteristic.HoldPosition)).toBe(true);
   });
 
   it('removes a HoldPosition restored from an older cached accessory', () => {

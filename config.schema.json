@@ -171,6 +171,32 @@
         "default": false,
         "description": "Off by default: the tile shows the position you asked for as soon as you tap, which is responsive but is ahead of the shade while it moves. Turn on to keep the tile on the real position and show opening/closing during travel \u2014 truer, but the number does not change for several seconds."
       },
+      "stopCommand": {
+        "title": "Offer stop",
+        "type": "string",
+        "default": "auto",
+        "oneOf": [
+          {
+            "title": "On for Gen 2 hubs only (recommended)",
+            "enum": [
+              "auto"
+            ]
+          },
+          {
+            "title": "On",
+            "enum": [
+              "on"
+            ]
+          },
+          {
+            "title": "Off",
+            "enum": [
+              "off"
+            ]
+          }
+        ],
+        "description": "Adds HomeKit's stop (Hold Position) to each shade. Gen 2 hubs halt a moving shade; Gen 1 hubs accept stop and ignore it, so it is off there unless you turn it on. After a stop it asks shades where the shade halted, which wakes its motor once."
+      },
       "verifyAfterMove": {
         "title": "Ask shades after a move",
         "type": "boolean",
@@ -440,9 +466,10 @@
         },
         {
           "type": "help",
-          "helpvalue": "<hr><div class=\"fw-semibold\">In the Home app</div><p class=\"grey-text help-block small\">How a tile shows a shade while it moves.</p>"
+          "helpvalue": "<hr><div class=\"fw-semibold\">In the Home app</div><p class=\"grey-text help-block small\">How a tile shows a shade while it moves, and stopping it.</p>"
         },
-        "reportTravel"
+        "reportTravel",
+        "stopCommand"
       ],
       "labelHtmlClass": "fs-5",
       "labelHelpBlockClass": "grey-text help-block small"

@@ -26,6 +26,13 @@ export const SHADE_REMOVAL_THRESHOLD = 3;
 export const SHADE_FULL_TRAVEL_MS = 20_000;
 /** Floor on an estimated travel, so a tiny nudge still reads as movement. */
 export const SHADE_MIN_TRAVEL_MS = 1_000;
+/**
+ * How long after a stop to ask the shade where it halted, and when to ask
+ * again if it does not answer. A Gen 2 hub (build 1056) answered correctly at
+ * 1-8s after a stop in 9 of 10 trials; the one miss was at 2s.
+ */
+export const STOP_SETTLE_MS = 2_000;
+export const STOP_RETRY_MS = 5_000;
 /** Heal sweep bounds: never more often than this, and a gap between shades. */
 export const MIN_HEAL_SWEEP_INTERVAL_MINUTES = 30;
 export const HEAL_SWEEP_GAP_MS = 4_000;
@@ -122,6 +129,11 @@ export interface PowerViewPlatformConfig extends PlatformConfig {
   verifyAfterMove?: boolean;
   /** How long after the last command to verify. Defaults to 30000. */
   verifyDelayMs?: number;
+  /**
+   * Offer stop (HomeKit Hold Position). "auto", the default, offers it on Gen 2
+   * hubs, which halt a moving shade, and not on Gen 1 hubs, which ignore it.
+   */
+  stopCommand?: 'auto' | 'on' | 'off';
   /** Send only the last value of a slider drag, after this many ms of rest. 0 disables. */
   setPositionDebounceMs?: number;
   /** Expose hub scenes as HomeKit switches. Nothing appears if none are defined. */

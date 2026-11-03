@@ -63,8 +63,9 @@ when calls overlap. Dropped connections are retried instead of silently losing t
 
 **Scenes are exposed**, which is the only way to move a group of shades in unison.
 
-**It does not pretend to stop a moving shade.** The hub accepts a stop command and ignores it, so
-Hold is not offered. To stop a shade, send it a new position.
+**It only offers stop where the hub honours it.** A Gen 2 hub halts a moving shade; a Gen 1 hub
+accepts the stop command and ignores it. So Hold is offered on Gen 2 hubs and not on Gen 1. On
+either, sending a shade a new position also stops it where you want.
 
 **It has no runtime dependencies**, so it adds no third-party code to your Homebridge install.
 Hub responses are size-capped and streamed, shade names are sanitised before they reach your logs
@@ -108,6 +109,7 @@ The hub is contacted at `powerview-hub.local` by default.
 | `syncPositionsOnStart` | Ask shades at startup that the hub has no position for. Wakes those motors | `true` |
 | `quietHours` | Hours when the plugin won't ask shades at startup or on schedule, so an unattended restart cannot wake shades overnight. Asking shades after a move still runs | `21:00`–`08:00` |
 | `reportTravel` | Animate travel in HomeKit instead of reporting the commanded position at once | `false` |
+| `stopCommand` | Offer stop (HomeKit Hold Position). `auto` offers it on Gen 2 hubs, which halt the shade, and not on Gen 1 hubs, which ignore it. `on` or `off` overrides | `auto` |
 | `verifyAfterMove` | Ask shades after a move where each one ended up, to catch a motor that stopped short. Wakes the motor, even during quiet hours | `false` |
 | `verifyDelayMs` | Wait this long after the last command before asking (5000 to 300000) | `30000` |
 | `refreshShades` | Ask shades instead of hub on every HomeKit read. Wakes a motor every time, even during quiet hours | `false` |
@@ -145,6 +147,19 @@ check is logged as `Asking shades after a move: checking shade 1342`, and a shad
 elsewhere as `Asking shades after a move: shade 1342 was {...}, now {...}` and is shown where it
 really is. The read wakes the motor shortly after it stopped, which is why it is off by default.
 It runs during quiet hours too, since it follows a move someone just made.
+
+### Stopping a moving shade
+
+HomeKit's stop is the Hold Position control on a window covering. With it on, Hold sends the hub
+`motion: "stop"`. The hub's reply still names the old target, so the plugin ignores it: it shows
+the shade stopped where the tile stood, then asks shades where it actually halted two seconds
+later (once more after five seconds if the shade does not answer), and shows that. A slider value
+still waiting to be sent, or a travel animation in progress, is dropped so it cannot undo the stop.
+
+`stopCommand` is `auto` by default, which follows the hub's generation from its firmware: on for
+Gen 2 (tested on build 1056, where shades on both shade firmware versions stopped), off for Gen 1
+(build 827 accepts the command and lets the shade finish its move) and off when the generation is
+unknown. Whether a HomeKit app shows a stop button for Hold is up to the app.
 
 Example with host and polling:
 

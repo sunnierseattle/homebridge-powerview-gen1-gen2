@@ -48,6 +48,7 @@ import {
   unmatchedSceneExclusions,
   type SceneExclusions,
   resolveShadeCapability,
+  resolveStopCommand,
   shadeKindForCapability,
   sanitizePositionMap,
 } from './shadeUtils.js';
@@ -58,6 +59,8 @@ import {
   SHADE_REMOVAL_THRESHOLD,
   BACKGROUND_REFRESH_INTERVAL_MS,
   SHADE_FULL_TRAVEL_MS,
+  STOP_RETRY_MS,
+  STOP_SETTLE_MS,
   SHADE_MIN_TRAVEL_MS,
   HEAL_SWEEP_GAP_MS,
   MIN_HEAL_SWEEP_GAP_MS,
@@ -121,6 +124,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
   private readonly verifyAfterMove: boolean;
   private readonly verifyDelayMs: number;
   private readonly setPositionDebounceMs: number;
+  private readonly stopCommand: unknown;
   private readonly hubHost: string;
   private readonly refreshShades: boolean;
   private readonly pollShadesForUpdate: boolean;
@@ -144,6 +148,8 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
   private readonly verifyTimers = new Map<number, ReturnType<typeof setTimeout>>();
   /** Slider values waiting out the debounce, per shade/position. */
   private readonly debounced = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Pending reads of where a stopped shade halted, one per shade. */
+  private readonly stopTimers = new Map<number, ReturnType<typeof setTimeout>>();
   /** Travel timers per shade/position, so a re-target cancels the old arrival. */
   private readonly travelTimers = new Map<string, ReturnType<typeof setTimeout>>();
   public readonly sceneAccessories = new Map<number, PlatformAccessory<SceneContext>>();
@@ -208,6 +214,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       && config.setPositionDebounceMs > 0
       ? Math.min(config.setPositionDebounceMs, MAX_SET_POSITION_DEBOUNCE_MS)
       : 0;
+    this.stopCommand = config.stopCommand;
     this.refreshShades = config.refreshShades === true;
     this.pollShadesForUpdate = config.pollShadesForUpdate === true;
     this.strictErrors = config.strictErrors === true;
@@ -250,6 +257,10 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
         clearTimeout(timer);
       }
       this.debounced.clear();
+      for (const timer of this.stopTimers.values()) {
+        clearTimeout(timer);
+      }
+      this.stopTimers.clear();
     });
   }
 
@@ -841,6 +852,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
 
     for (const handler of this.handlers.values()) {
       handler.updateAccessoryInformation();
+      handler.applyStopSupport();
     }
   }
 
@@ -1309,6 +1321,75 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       this.handlers.get(shadeId)?.reportArrival(position, to);
       this.cachePositions(shadeId, { [position]: to });
     }, travel));
+  }
+
+  /** Whether to offer stop (Hold Position): the setting, or the hub generation under "auto". */
+  get stopEnabled(): boolean {
+    return resolveStopCommand(this.stopCommand, this.hubCapabilities?.generationHint);
+  }
+
+  /**
+   * Halts a shade, then asks it where it stopped.
+   *
+   * The hub's reply to a stop echoes the move's target, so it is never applied.
+   * Only an RF read finds the real position, and it waits STOP_SETTLE_MS for
+   * the motor to come to rest. Anything still waiting to move or report the
+   * shade is dropped first, or it would undo the stop.
+   */
+  async stopShade(shadeId: number): Promise<void> {
+    this.log.info('stopShade %d', shadeId);
+    this.cancelPendingMotion(shadeId);
+    this.handlers.get(shadeId)?.reportStopped();
+
+    await this.hub.stopShade(shadeId);
+    this.scheduleStopRead(shadeId, STOP_SETTLE_MS, true);
+  }
+
+  private cancelPendingMotion(shadeId: number): void {
+    const prefix = `${shadeId}:`;
+    for (const timers of [this.debounced, this.travelTimers]) {
+      for (const [key, timer] of timers) {
+        if (key.startsWith(prefix)) {
+          clearTimeout(timer);
+          timers.delete(key);
+        }
+      }
+    }
+    for (const timers of [this.verifyTimers, this.stopTimers]) {
+      clearTimeout(timers.get(shadeId));
+      timers.delete(shadeId);
+    }
+  }
+
+  private scheduleStopRead(shadeId: number, delay: number, retry: boolean): void {
+    this.stopTimers.set(shadeId, setTimeout(() => {
+      this.stopTimers.delete(shadeId);
+      void this.readStoppedShade(shadeId, retry);
+    }, delay));
+  }
+
+  private async readStoppedShade(shadeId: number, retry: boolean): Promise<void> {
+    if (this.shuttingDown) {
+      return;
+    }
+    try {
+      const shade = await this.hub.getShade(shadeId, { refresh: true });
+      if (!shade.timedOut) {
+        const positions = this.handlers.get(shadeId)?.updateShadeValues(shade, true) ?? null;
+        this.cachePositions(shadeId, positions);
+        this.log.info('Shade %d stopped at %j', shadeId, positions);
+        return;
+      }
+      // A timed-out read carries the hub's stored target, not the shade's position.
+      this.log.warn('Shade %d did not answer after a stop', shadeId);
+    } catch (err) {
+      logError(this.log, `Reading shade ${shadeId} after a stop failed:`, err);
+    }
+    if (retry && !this.shuttingDown) {
+      this.scheduleStopRead(shadeId, STOP_RETRY_MS, false);
+    } else {
+      this.log.warn('Shade %d: position after the stop is unknown until it is next asked', shadeId);
+    }
   }
 
   async jogShade(shadeId: number): Promise<Partial<Record<HubPosition, number>> | null> {
