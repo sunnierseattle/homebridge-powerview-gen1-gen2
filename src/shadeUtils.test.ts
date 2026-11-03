@@ -10,6 +10,7 @@ import {
   isWithinQuietHours,
   resolveHubHost,
   resolveShadeCapability,
+  resolveStopCommand,
   shadeKindForCapability,
   lookupPosition,
   msUntilNextDailyRun,
@@ -19,6 +20,7 @@ import {
   resolveSceneExclusions,
   unmatchedSceneExclusions,
   positionMapsEqual,
+  positionsSettled,
   resolveBatteryPollSettings,
   resolveBatteryReading,
   sanitizePositionMap,
@@ -537,5 +539,59 @@ describe('resolveHubHost', () => {
   it('falls back when unset or empty', () => {
     expect(resolveHubHost(undefined, 'default')).toBe('default');
     expect(resolveHubHost('   ', 'default')).toBe('default');
+  });
+});
+
+describe('resolveStopCommand', () => {
+  // Stop was measured on real hubs: build 827 (Gen 1) answers 200 and lets the
+  // shade finish its move; build 1056 (Gen 2) halts it. "auto" follows that.
+  it('turns stop on for a Gen 2 hub by default', () => {
+    expect(resolveStopCommand(undefined, 'gen2')).toBe(true);
+    expect(resolveStopCommand('auto', 'gen2')).toBe(true);
+  });
+
+  it('leaves stop off for a Gen 1 hub by default', () => {
+    expect(resolveStopCommand(undefined, 'gen1')).toBe(false);
+    expect(resolveStopCommand('auto', 'gen1')).toBe(false);
+  });
+
+  it('leaves stop off while the generation is unknown', () => {
+    expect(resolveStopCommand('auto', 'unknown')).toBe(false);
+    expect(resolveStopCommand('auto', undefined)).toBe(false);
+  });
+
+  it('lets the user force it either way', () => {
+    expect(resolveStopCommand('on', 'gen1')).toBe(true);
+    expect(resolveStopCommand('on', undefined)).toBe(true);
+    expect(resolveStopCommand('off', 'gen2')).toBe(false);
+  });
+
+  it('treats an unrecognised value as auto', () => {
+    expect(resolveStopCommand('sometimes', 'gen2')).toBe(true);
+    expect(resolveStopCommand(true, 'gen1')).toBe(false);
+  });
+});
+
+describe('positionsSettled', () => {
+  // A set wrote 35389 and the shade later read 35392: equal within noise.
+  it('treats readings a few units apart as the same position', () => {
+    expect(positionsSettled({ posKind1: 1, position1: 35389 }, { posKind1: 1, position1: 35392 }, 655)).toBe(true);
+  });
+
+  // Left read 61363 then 36785 three seconds apart while still closing.
+  it('sees a shade still moving', () => {
+    expect(positionsSettled({ posKind1: 1, position1: 61363 }, { posKind1: 1, position1: 36785 }, 655)).toBe(false);
+  });
+
+  it('checks every rail of a two-rail shade', () => {
+    const a = { posKind1: 1, position1: 1000, posKind2: 2, position2: 5000 };
+    expect(positionsSettled(a, { ...a, position2: 9000 }, 655)).toBe(false);
+    expect(positionsSettled(a, { ...a }, 655)).toBe(true);
+  });
+
+  it('is never settled without readings to compare', () => {
+    expect(positionsSettled(undefined, { posKind1: 1, position1: 0 }, 655)).toBe(false);
+    expect(positionsSettled({ posKind1: 1 }, { posKind1: 1 }, 655)).toBe(false);
+    expect(positionsSettled({ posKind1: 1, position1: 0 }, { posKind1: 1, position2: 0 }, 655)).toBe(false);
   });
 });

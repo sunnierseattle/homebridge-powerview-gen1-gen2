@@ -1214,3 +1214,510 @@ describe('PowerViewPlatform setPositionDebounceMs', () => {
     expect(moves()).toHaveLength(0);
   });
 });
+
+describe('PowerViewPlatform stop', () => {
+  let harness: Harness;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    harness = createHarness();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  /** 14% open, where a real Gen 2 shade halted after a stop 5.6s into opening. */
+  const HALTED_AT = 9295;
+  const SHADE = { id: 1, name: 'U2hhZGU=', type: 1, capabilities: 0, positions: { posKind1: 1, position1: 0 } };
+  const GEN1 = { name: 'PowerView Hub', revision: 1, subRevision: 1, build: 827 };
+  const GEN2 = { name: 'PV Hub2.0', revision: 2, subRevision: 0, build: 1056 };
+
+  /**
+   * A hub double that behaves as the Gen 2 hub was measured to: a stop's reply
+   * echoes the last commanded target, and only a refresh read reports where
+   * the shade actually halted.
+   */
+  function stubStopHub(mainProcessor = GEN2, refreshes: Array<Record<string, unknown>> = []) {
+    let lastTarget: Record<string, number> = SHADE.positions;
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/userdata')) {
+        return Promise.resolve(jsonResponse({ userData: { hubName: 'SHVi', firmware: { mainProcessor } } }));
+      }
+      if (url.includes('/api/fwversion')) {
+        return Promise.resolve(jsonResponse({ firmware: { mainProcessor } }));
+      }
+      if (/\/api\/shades\/\d+/.test(url)) {
+        const body = init?.body
+          ? JSON.parse(String(init.body)) as { shade?: { positions?: Record<string, number>; motion?: string } }
+          : undefined;
+        if (body?.shade?.positions) {
+          lastTarget = body.shade.positions;
+        }
+        if (url.includes('refresh=true')) {
+          // `delayMs` holds the reply back, as a slow RF read on a real hub does.
+          const { delayMs, ...next } = refreshes.shift() ?? { positions: { posKind1: 1, position1: HALTED_AT } };
+          const reply = jsonResponse({ shade: { ...SHADE, ...next } });
+          return typeof delayMs === 'number'
+            ? new Promise((resolve) => setTimeout(() => resolve(reply), delayMs))
+            : Promise.resolve(reply);
+        }
+        return Promise.resolve(jsonResponse({ shade: { ...SHADE, positions: lastTarget } }));
+      }
+      if (url.includes('/api/shades')) {
+        return Promise.resolve(jsonResponse({ shadeData: [SHADE], shadeIds: [1] }));
+      }
+      // Scene 7 opens shade 1.
+      if (url.includes('/api/scenemembers')) {
+        return Promise.resolve(jsonResponse({ sceneMemberData: [
+          { id: 1, sceneId: 7, shadeId: 1, positions: { posKind1: 1, position1: 65535 } },
+        ] }));
+      }
+      if (url.includes('sceneId=')) {
+        return Promise.resolve(jsonResponse({ scene: { shadeIds: [1] } }));
+      }
+      if (url.includes('/api/scenes')) {
+        return Promise.resolve(jsonResponse({ sceneIds: [7], sceneData: [{ id: 7, name: 'T3Blbg==' }] }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  async function launch(cfg = config(), mainProcessor = GEN2, refreshes?: Array<Record<string, unknown>>) {
+    const fetchMock = stubStopHub(mainProcessor, refreshes);
+    const platform = new PowerViewPlatform(harness.log, cfg, harness.api);
+    await harness.emit('didFinishLaunching');
+    await vi.advanceTimersByTimeAsync(5_000);
+    const accessory = platform.accessories.get(1);
+    const service = accessory?.getServiceById(Service.WindowCovering, SUBTYPE.BOTTOM);
+    if (!service) {
+      throw new Error('shade 1 not registered');
+    }
+    return { platform, service, fetchMock };
+  }
+
+  /** Sends a stop and lets the hub queue deliver it (it waits 100ms before sending). */
+  async function stop(platform: PowerViewPlatform) {
+    const sent = platform.stopShade(1);
+    await vi.advanceTimersByTimeAsync(200);
+    await sent;
+  }
+
+  const hasHold = (s: Service) => s.testCharacteristic(Characteristic.HoldPosition);
+  const current = (s: Service) => s.getCharacteristic(Characteristic.CurrentPosition).value;
+  const target = (s: Service) => s.getCharacteristic(Characteristic.TargetPosition).value;
+  const state = (s: Service) => s.getCharacteristic(Characteristic.PositionState).value;
+  const puts = (fetchMock: ReturnType<typeof stubStopHub>) => fetchMock.mock.calls
+    .filter(([, init]) => init?.method === 'PUT')
+    .map(([, init]) => JSON.parse(String(init?.body)) as { shade: Record<string, unknown> });
+  const refreshReads = (fetchMock: ReturnType<typeof stubStopHub>) => fetchMock.mock.calls
+    .filter(([url]) => String(url).includes('refresh=true')).length;
+
+  it('offers stop on a Gen 2 hub by default', async () => {
+    const { service } = await launch();
+    expect(hasHold(service)).toBe(true);
+  });
+
+  it('does not offer stop on a Gen 1 hub by default, which ignores it', async () => {
+    const { service } = await launch(config(), GEN1);
+    expect(hasHold(service)).toBe(false);
+  });
+
+  it('can be turned off on a Gen 2 hub', async () => {
+    expect(hasHold((await launch(config({ stopCommand: 'off' }), GEN2)).service)).toBe(false);
+  });
+
+  it('can be forced on for a Gen 1 hub', async () => {
+    expect(hasHold((await launch(config({ stopCommand: 'on' }), GEN1)).service)).toBe(true);
+  });
+
+  it('sends motion stop when HomeKit asks the shade to hold', async () => {
+    const { service, fetchMock } = await launch();
+
+    service.getCharacteristic(Characteristic.HoldPosition).setValue(true);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(puts(fetchMock)).toContainEqual({ shade: { motion: 'stop' } });
+  });
+
+  it('does not report the target the stop reply echoes', async () => {
+    const { platform, service } = await launch(config({ reportTravel: true }));
+    const move = platform.setPosition(1, 1, 100, vi.fn());
+    await vi.advanceTimersByTimeAsync(1_000);
+    await move;
+
+    const stop = platform.stopShade(1);
+    await vi.advanceTimersByTimeAsync(500);
+    await stop;
+
+    // The Gen 2 reply to a stop still says 65535: it is not where the shade is.
+    expect(current(service)).not.toBe(100);
+    expect(state(service)).toBe(Characteristic.PositionState.STOPPED);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(current(service)).toBe(14);
+  });
+
+  const stops = (fetchMock: ReturnType<typeof stubStopHub>) => puts(fetchMock)
+    .filter((p) => p.shade.motion === 'stop').length;
+  const at = (percent: number) => ({ positions: { posKind1: 1, position1: Math.round(65535 * percent / 100) } });
+
+  it('waits two seconds, then shows where the shade halted once two reads agree', async () => {
+    const { platform, service, fetchMock } = await launch();
+    const before = refreshReads(fetchMock);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(refreshReads(fetchMock)).toBe(before);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(refreshReads(fetchMock)).toBe(before + 2);
+    expect(stops(fetchMock)).toBe(1);
+    expect(current(service)).toBe(14);
+    expect(target(service)).toBe(14);
+    expect(state(service)).toBe(Characteristic.PositionState.STOPPED);
+  });
+
+  // Left (17438) missed 3 of 4 stops on build 1056, and a single read 3s later
+  // showed it midway (43471) while it went on to close. Two reads that differ
+  // mean the shade is still moving, so stop is sent again.
+  it('stops again when two reads show the shade still moving', async () => {
+    const { platform, service, fetchMock } = await launch(config(), GEN2, [
+      at(70), at(40), at(30), at(30),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(current(service)).not.toBe(40);
+    expect(stops(fetchMock)).toBe(2);
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(current(service)).toBe(30);
+    expect(stops(fetchMock)).toBe(2);
+  });
+
+  it('gives up stopping after the second try, and shows where the move ended', async () => {
+    const { platform, service, fetchMock } = await launch(config(), GEN2, [
+      at(70), at(40), at(30), at(10), at(25),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(stops(fetchMock)).toBe(2);
+    expect(current(service)).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(current(service)).toBe(25);
+    expect(stops(fetchMock)).toBe(2);
+  });
+
+  it('never shows a timed-out read, which carries the stored target', async () => {
+    const timedOut = { positions: { posKind1: 1, position1: 65535 }, timedOut: true };
+    const { platform, service } = await launch(config({ reportTravel: true }), GEN2, [
+      timedOut, at(14), at(14),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(current(service)).not.toBe(100);
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(current(service)).toBe(14);
+  });
+
+  // Right, at rest, timed out once and was stopped a second time for nothing.
+  it('reads again after a timeout instead of stopping again', async () => {
+    const timedOut = { positions: { posKind1: 1, position1: 65535 }, timedOut: true };
+    const { platform, service, fetchMock } = await launch(config(), GEN2, [
+      timedOut, at(14), at(14),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(stops(fetchMock)).toBe(1);
+    expect(current(service)).toBe(14);
+  });
+
+  it('waits out the move when the shade keeps timing out, without stopping again', async () => {
+    const timedOut = { positions: { posKind1: 1, position1: 65535 }, timedOut: true };
+    const { platform, service, fetchMock } = await launch(config(), GEN2, [
+      timedOut, timedOut, timedOut, at(25),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(stops(fetchMock)).toBe(1);
+    expect(current(service)).not.toBe(25);
+
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(stops(fetchMock)).toBe(1);
+    expect(current(service)).toBe(25);
+  });
+
+  // Front Middle was opened 7s after Stop Shades; its stop check then saw it
+  // moving, took it for a missed stop and stopped it again.
+  it('gives way to a move sent after the stop', async () => {
+    const { platform, service, fetchMock } = await launch(config(), GEN2, [
+      at(14), at(40), at(60), at(80),
+    ]);
+
+    await stop(platform);
+    const move = platform.setPosition(1, 1, 80, vi.fn());
+    await vi.advanceTimersByTimeAsync(60_000);
+    await move;
+
+    expect(stops(fetchMock)).toBe(1);
+    expect(current(service)).toBe(80);
+  });
+
+  it('gives way to a move sent while the stop check is reading', async () => {
+    const { platform, service, fetchMock } = await launch(config(), GEN2, [
+      at(14), at(40), at(60), at(80),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(2_050);
+    const move = platform.setPosition(1, 1, 80, vi.fn());
+    await vi.advanceTimersByTimeAsync(60_000);
+    await move;
+
+    expect(stops(fetchMock)).toBe(1);
+    expect(current(service)).toBe(80);
+  });
+
+  it('gives way to a scene activated while the stop check is reading', async () => {
+    const { platform, service, fetchMock } = await launch(config({ exposeScenes: true }), GEN2, [
+      at(14), at(40), at(60), at(80),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(2_050);
+    platform.sceneAccessories.get(7)?.getService(Service.Switch)
+      ?.getCharacteristic(Characteristic.On).setValue(true);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(stops(fetchMock)).toBe(1);
+    expect(current(service)).toBe(100);
+  });
+
+  it('gives way to a slider value still waiting out the debounce', async () => {
+    const { platform, fetchMock } = await launch(config({ setPositionDebounceMs: 3_000 }), GEN2, [
+      at(14), at(40), at(60), at(80),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await platform.setPosition(1, 1, 80, vi.fn());
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(stops(fetchMock)).toBe(1);
+  });
+
+  it('lets a second stop replace the check of the first', async () => {
+    const { platform, service, fetchMock } = await launch(config(), GEN2, [
+      { ...at(40), delayMs: 3_000 }, at(60), at(60), at(60),
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(2_100);
+    // Waits behind the slow read, which is already on the wire.
+    const second = platform.stopShade(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await second;
+
+    expect(stops(fetchMock)).toBe(2);
+    expect(current(service)).toBe(60);
+  });
+
+  it('never shows a late final read over a scene activated meanwhile', async () => {
+    const timedOut = { positions: { posKind1: 1, position1: 65535 }, timedOut: true };
+    const { platform, service } = await launch(config({ exposeScenes: true }), GEN2, [
+      timedOut, timedOut, timedOut, { ...at(25), delayMs: 5_000 },
+    ]);
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(2_000 + 45_500);
+    platform.sceneAccessories.get(7)?.getService(Service.Switch)
+      ?.getCharacteristic(Characteristic.On).setValue(true);
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(current(service)).toBe(100);
+  });
+
+  it('cancels the travel animation, so the shade is not shown arriving later', async () => {
+    const { platform, service } = await launch(config({ reportTravel: true }));
+    const move = platform.setPosition(1, 1, 100, vi.fn());
+    await vi.advanceTimersByTimeAsync(1_000);
+    await move;
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(current(service)).toBe(14);
+    expect(state(service)).toBe(Characteristic.PositionState.STOPPED);
+  });
+
+  it('drops a slider value still waiting to be sent', async () => {
+    const { platform, fetchMock } = await launch(config({ setPositionDebounceMs: 1500 }));
+    await platform.setPosition(1, 1, 80, vi.fn());
+
+    await stop(platform);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(puts(fetchMock).filter((p) => p.shade.positions)).toEqual([]);
+  });
+
+  it('reports a failed stop to HomeKit', async () => {
+    const { service, fetchMock } = await launch();
+    fetchMock.mockImplementation(() => Promise.resolve(hubResponse({}, 500)));
+
+    const result = service.getCharacteristic(Characteristic.HoldPosition).handleSetRequest(true);
+    const settled = result.then(() => 'ok', () => 'error');
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(await settled).toBe('error');
+  });
+});
+
+describe('PowerViewPlatform stop switch', () => {
+  let harness: Harness;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    harness = createHarness();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  const GEN1 = { name: 'PowerView Hub', revision: 1, subRevision: 1, build: 827 };
+  const GEN2 = { name: 'PV Hub2.0', revision: 2, subRevision: 0, build: 1056 };
+  const shadeAt = (id: number, groupId: number | undefined, position1: number) => ({
+    id, name: 'U2hhZGU=', type: 1, capabilities: 0, groupId, positions: { posKind1: 1, position1 },
+  });
+  // Two shades share group 26693; shade 3 reports no group.
+  const SHADES = [shadeAt(1, 26693, 0), shadeAt(2, 26693, 0), shadeAt(3, undefined, 0)];
+  /** Where each shade halts, as a refresh read reports it. */
+  const HALTED: Record<number, number> = { 1: 13107, 2: 26214, 3: 39321 };
+
+  function stubHub(mainProcessor = GEN2) {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes('/api/userdata')) {
+        return Promise.resolve(jsonResponse({ userData: { hubName: 'SHVi', firmware: { mainProcessor } } }));
+      }
+      if (url.includes('/api/fwversion')) {
+        return Promise.resolve(jsonResponse({ firmware: { mainProcessor } }));
+      }
+      if (url.includes('groupId=')) {
+        return Promise.resolve(jsonResponse({ shadeIds: [1, 2] }));
+      }
+      const match = /\/api\/shades\/(\d+)/.exec(url);
+      if (match) {
+        const id = Number(match[1]);
+        const shade = SHADES.find((s) => s.id === id);
+        const position1 = url.includes('refresh=true') ? HALTED[id] : shade?.positions.position1;
+        return Promise.resolve(jsonResponse({ shade: { ...shade, positions: { posKind1: 1, position1 } } }));
+      }
+      if (url.includes('/api/shades')) {
+        return Promise.resolve(jsonResponse({ shadeData: SHADES, shadeIds: SHADES.map((s) => s.id) }));
+      }
+      if (url.includes('/api/scenes')) {
+        return Promise.resolve(jsonResponse({ sceneData: [], sceneIds: [] }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  async function launch(cfg = config({ stopSwitch: true }), mainProcessor = GEN2, cached: PlatformAccessory[] = []) {
+    const fetchMock = stubHub(mainProcessor);
+    const platform = new PowerViewPlatform(harness.log, cfg, harness.api);
+    for (const accessory of cached) {
+      platform.configureAccessory(accessory);
+    }
+    await harness.emit('didFinishLaunching');
+    await vi.advanceTimersByTimeAsync(5_000);
+    return { platform, fetchMock };
+  }
+
+  const stopSwitches = () => (harness.registered as unknown as PlatformAccessory[])
+    .filter((a) => (a.context as { stopSwitch?: boolean }).stopSwitch === true);
+  const switchOf = (accessory: PlatformAccessory) => {
+    const service = accessory.getService(Service.Switch);
+    if (!service) {
+      throw new Error('no switch service');
+    }
+    return service;
+  };
+  const percent = (platform: PowerViewPlatform, id: number) => platform.accessories.get(id)
+    ?.getServiceById(Service.WindowCovering, SUBTYPE.BOTTOM)
+    ?.getCharacteristic(Characteristic.CurrentPosition).value;
+
+  it('adds a Stop Shades switch when turned on with a Gen 2 hub', async () => {
+    await launch();
+    expect(stopSwitches().map((a) => a.displayName)).toEqual(['Stop Shades']);
+  });
+
+  it('adds no switch unless asked for', async () => {
+    await launch(config());
+    expect(stopSwitches()).toEqual([]);
+  });
+
+  it('adds no switch on a Gen 1 hub, which ignores stop', async () => {
+    await launch(config({ stopSwitch: true }), GEN1);
+    expect(stopSwitches()).toEqual([]);
+  });
+
+  it('removes a cached switch once it is turned off', async () => {
+    const cached = new (harness.api.platformAccessory as unknown as new (n: string, u: string) => PlatformAccessory)(
+      'Stop Shades', 'cached-stop-switch',
+    );
+    (cached.context as { stopSwitch?: boolean }).stopSwitch = true;
+    cached.addService(Service.Switch, 'Stop Shades');
+
+    await launch(config(), GEN2, [cached]);
+
+    expect(harness.unregistered as unknown as PlatformAccessory[]).toContain(cached);
+  });
+
+  it('stops each group with one command and a shade with no group on its own', async () => {
+    const { fetchMock } = await launch();
+    const before = fetchMock.mock.calls.length;
+
+    switchOf(stopSwitches()[0]).getCharacteristic(Characteristic.On).setValue(true);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    const sent = fetchMock.mock.calls.slice(before)
+      .filter(([, i]) => i?.method === 'PUT')
+      .map(([url, i]) => [new URL(String(url)).pathname + new URL(String(url)).search, JSON.parse(String(i?.body))]);
+    expect(sent).toEqual([
+      ['/api/shades?groupId=26693', { shade: { motion: 'stop' } }],
+      ['/api/shades/3', { shade: { motion: 'stop' } }],
+    ]);
+  });
+
+  it('turns itself back off, like a scene switch', async () => {
+    await launch();
+    const on = switchOf(stopSwitches()[0]).getCharacteristic(Characteristic.On);
+
+    on.setValue(true);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(on.value).toBe(false);
+  });
+
+  it('then shows where each shade halted', async () => {
+    const { platform } = await launch();
+
+    switchOf(stopSwitches()[0]).getCharacteristic(Characteristic.On).setValue(true);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect([percent(platform, 1), percent(platform, 2), percent(platform, 3)]).toEqual([20, 40, 60]);
+  });
+});

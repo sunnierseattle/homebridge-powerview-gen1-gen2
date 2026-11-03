@@ -494,3 +494,54 @@ export function resolveHubHost(host: string | undefined, fallback: string): stri
   }
   return HUB_HOST_PATTERN.test(trimmed) ? trimmed : fallback;
 }
+
+export type StopCommandSetting = 'auto' | 'on' | 'off';
+
+/**
+ * Whether to offer stop (HomeKit Hold Position) for this hub.
+ *
+ * "auto" follows what the hubs were measured to do: a Gen 2 hub (build 1056)
+ * halts a moving shade, a Gen 1 hub (build 827) answers 200 and lets it finish.
+ * An unknown generation stays off, since a stop that is ignored tells HomeKit
+ * the shade halted while it keeps moving.
+ */
+export function resolveStopCommand(
+  setting: unknown,
+  generation: 'gen1' | 'gen2' | 'unknown' | undefined,
+): boolean {
+  if (setting === 'on') {
+    return true;
+  }
+  if (setting === 'off') {
+    return false;
+  }
+  return generation === 'gen2';
+}
+
+/**
+ * Whether two hub readings of one shade agree to within `tolerance` (hub units)
+ * on every position. Used after a stop: two reads seconds apart that agree mean
+ * the shade has halted; a shade still moving shows a gap of several percent.
+ */
+export function positionsSettled(
+  a: Record<string, number | undefined> | undefined,
+  b: Record<string, number | undefined> | undefined,
+  tolerance: number,
+): boolean {
+  if (!a || !b) {
+    return false;
+  }
+  const values = (p: Record<string, number | undefined>) => Object.entries(p)
+    .filter(([key]) => key.startsWith('position'))
+    .sort(([x], [y]) => x.localeCompare(y));
+  const left = values(a);
+  const right = values(b);
+  return left.length > 0
+    && left.length === right.length
+    && left.every(([key, value], i) => {
+      const [otherKey, other] = right[i];
+      return key === otherKey
+        && typeof value === 'number' && typeof other === 'number'
+        && Math.abs(value - other) <= tolerance;
+    });
+}

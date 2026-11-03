@@ -492,8 +492,21 @@ export class PowerViewHub {
   private queueRequest(queued: QueuedRequest): void {
     if (!this.queue.length) {
       this.scheduleRequest(INITIAL_REQUEST_DELAY_MS);
+      this.queue.push(queued);
+      return;
     }
-    this.queue.push(queued);
+    // A command goes ahead of RF reads still waiting (about 3s each on a Gen 2
+    // hub, up to the timeout for a moving shade), but after the request at the
+    // head, which may already be on the wire, and after commands queued before
+    // it. Reads come last, in order.
+    const firstRead = queued.data
+      ? this.queue.findIndex((q, index) => index > 0 && !q.data)
+      : -1;
+    if (firstRead === -1) {
+      this.queue.push(queued);
+    } else {
+      this.queue.splice(firstRead, 0, queued);
+    }
   }
 
   private scheduleRequest(delay: number): void {
@@ -664,7 +677,15 @@ export class PowerViewHub {
     userValue: number,
   ): Promise<PowerViewShade> {
     return new Promise((resolve, reject) => {
-      for (const queued of this.queue) {
+      // A queued motion (stop, jog) is a barrier. Merging into a move queued
+      // before it would send this value first, and the stop would then halt it.
+      let lastMotion = -1;
+      this.queue.forEach((queued, index) => {
+        if (queued.shadeId === shadeId && queued.data?.motion) {
+          lastMotion = index;
+        }
+      });
+      for (const queued of this.queue.slice(lastMotion + 1)) {
         if (queued.shadeId === shadeId && queued.data?.positions) {
           const positions = parsePositionMap(queued.data.positions);
 
@@ -733,6 +754,37 @@ export class PowerViewHub {
       url.toString(),
     );
     return json.sceneMemberData ?? [];
+  }
+
+  /**
+   * Halts a shade mid-travel.
+   *
+   * Only Gen 2 hubs act on it: build 1056 halted shades on both shade firmware
+   * versions tested, while build 827 answers 200 and lets the move finish. The
+   * reply echoes the move's target either way, so it says nothing about where
+   * the shade stopped.
+   */
+  async stopShade(shadeId: number): Promise<PowerViewShade> {
+    return this.motionRequest(shadeId, 'stop');
+  }
+
+  /**
+   * Stops every shade in a hub group with one command, as the vendor API's
+   * group PUT allows for any motion. Returns the shades the hub addressed.
+   */
+  async stopGroup(groupId: number): Promise<number[] | undefined> {
+    const url = new URL(this.baseUrl('/api/shades'));
+    url.searchParams.set('groupId', String(groupId));
+    const json = await this.fetchJson<{ shadeIds?: number[] }>(
+      url.toString(),
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shade: { motion: 'stop' } }),
+      },
+      RequestPriority.Write,
+    );
+    return Array.isArray(json.shadeIds) ? json.shadeIds : undefined;
   }
 
   async jogShade(shadeId: number): Promise<PowerViewShade> {

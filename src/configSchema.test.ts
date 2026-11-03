@@ -88,6 +88,8 @@ describe('config.schema.json form layout', () => {
         'quietHours.start',
         'quietHours.end',
         'reportTravel',
+        'stopCommand',
+        'stopSwitch',
       ]);
     });
 
@@ -244,7 +246,7 @@ describe('config.schema.json form layout', () => {
           ],
         ],
         ['Quiet hours', ['quietHours.start', 'quietHours.end']],
-        ['In the Home app', ['reportTravel']],
+        ['In the Home app', ['reportTravel', 'stopCommand', 'stopSwitch']],
       ]);
     });
 

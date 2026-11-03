@@ -297,6 +297,107 @@ describe('PowerViewHub shade request coalescing', () => {
   });
 });
 
+describe('PowerViewHub.stopShade', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it('sends motion stop as a PUT to the shade', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(() => Promise.resolve(hubResponse({ shade: { id: 7 } })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const request = hub().stopShade(7);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await request;
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(String(url)).toContain('/api/shades/7');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(String(init.body))).toEqual({ shade: { motion: 'stop' } });
+  });
+
+  // One RF command for the whole group: stopping shades one by one costs about
+  // 1.6s each on a Gen 2 hub, so the last of five would run on for 8s.
+  it('stops a whole group with one PUT', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(() => Promise.resolve(hubResponse({ shadeIds: [1, 2] })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const request = hub().stopGroup(26693);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await request).toEqual([1, 2]);
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new URL(url).pathname).toBe('/api/shades');
+    expect(new URL(url).searchParams.get('groupId')).toBe('26693');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(String(init.body))).toEqual({ shade: { motion: 'stop' } });
+  });
+
+  // Merging a later move into one queued before the stop would send it first,
+  // and the stop would then halt the move the user asked for last.
+  it('never merges a move queued after a stop into one queued before it', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(() => Promise.resolve(hubResponse({ shade: { id: 1 } })));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = hub();
+
+    const all = Promise.all([
+      client.putShade(1, HubPosition.BOTTOM, 65535, 100),
+      client.stopShade(1),
+      client.putShade(1, HubPosition.BOTTOM, 0, 0),
+    ]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await all;
+
+    const bodies = (fetchMock.mock.calls as unknown as [string, RequestInit][])
+      .map(([, init]) => JSON.parse(String(init.body)) as unknown);
+    expect(bodies).toEqual([
+      { shade: { positions: { posKind1: 1, position1: 65535 } } },
+      { shade: { motion: 'stop' } },
+      { shade: { positions: { posKind1: 1, position1: 0 } } },
+    ]);
+  });
+});
+
+describe('PowerViewHub shade queue priority', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  // After Stop Shades, ten RF reads (about 3s each on a Gen 2 hub) sat in the
+  // queue, and a close sent from HomeKit reached the hub 22s later.
+  it('sends a move ahead of RF reads still waiting, after the one in flight', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((url: string) => Promise.resolve(hubResponse({ shade: { id: Number(/shades\/(\d+)/.exec(url)?.[1]) } })));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = hub();
+
+    const all = Promise.all([
+      client.getShade(1, { refresh: true }),
+      client.getShade(2, { refresh: true }),
+      client.getShade(3, { refresh: true }),
+      client.putShade(4, HubPosition.BOTTOM, 0, 0),
+      client.stopShade(5),
+    ]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await all;
+
+    const sent = (fetchMock.mock.calls as unknown as [string, RequestInit?][])
+      .map(([url, init]) => `${init?.method ?? 'GET'} ${new URL(url).pathname}`);
+    expect(sent).toEqual([
+      'GET /api/shades/1',
+      'PUT /api/shades/4',
+      'PUT /api/shades/5',
+      'GET /api/shades/2',
+      'GET /api/shades/3',
+    ]);
+  });
+});
+
 describe('PowerViewHub request priority', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

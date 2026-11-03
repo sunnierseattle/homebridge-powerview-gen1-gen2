@@ -40,6 +40,7 @@ import {
   lookupPosition,
   msUntilNextDailyRun,
   positionMapsEqual,
+  positionsSettled,
   resolveBatteryPollSettings,
   resolveHubHost,
   isSceneExcluded,
@@ -48,6 +49,7 @@ import {
   unmatchedSceneExclusions,
   type SceneExclusions,
   resolveShadeCapability,
+  resolveStopCommand,
   shadeKindForCapability,
   sanitizePositionMap,
 } from './shadeUtils.js';
@@ -58,6 +60,9 @@ import {
   SHADE_REMOVAL_THRESHOLD,
   BACKGROUND_REFRESH_INTERVAL_MS,
   SHADE_FULL_TRAVEL_MS,
+  STOP_FINAL_READ_MS,
+  STOP_SETTLED_TOLERANCE,
+  STOP_SETTLE_MS,
   SHADE_MIN_TRAVEL_MS,
   HEAL_SWEEP_GAP_MS,
   MIN_HEAL_SWEEP_GAP_MS,
@@ -72,6 +77,7 @@ import {
   type PowerViewPlatformConfig,
   type SceneContext,
   type ShadeContext,
+  type StopSwitchContext,
 } from './settings.js';
 
 function verifyDelay(value: unknown): number {
@@ -121,6 +127,9 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
   private readonly verifyAfterMove: boolean;
   private readonly verifyDelayMs: number;
   private readonly setPositionDebounceMs: number;
+  private readonly stopCommand: unknown;
+  private readonly stopSwitch: boolean;
+  private stopSwitchAccessory?: PlatformAccessory<StopSwitchContext>;
   private readonly hubHost: string;
   private readonly refreshShades: boolean;
   private readonly pollShadesForUpdate: boolean;
@@ -144,6 +153,15 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
   private readonly verifyTimers = new Map<number, ReturnType<typeof setTimeout>>();
   /** Slider values waiting out the debounce, per shade/position. */
   private readonly debounced = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Each shade's hub group, from the shade list, so one command can stop a group. */
+  private readonly shadeGroups = new Map<number, number>();
+  /** Pending reads of where a stopped shade halted, one per shade. */
+  private readonly stopTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  /**
+   * Bumped per shade when a new move makes its stop check moot, so a check
+   * already reading neither re-stops the shade nor shows a stale position.
+   */
+  private readonly stopChecks = new Map<number, number>();
   /** Travel timers per shade/position, so a re-target cancels the old arrival. */
   private readonly travelTimers = new Map<string, ReturnType<typeof setTimeout>>();
   public readonly sceneAccessories = new Map<number, PlatformAccessory<SceneContext>>();
@@ -208,6 +226,8 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       && config.setPositionDebounceMs > 0
       ? Math.min(config.setPositionDebounceMs, MAX_SET_POSITION_DEBOUNCE_MS)
       : 0;
+    this.stopCommand = config.stopCommand;
+    this.stopSwitch = config.stopSwitch === true;
     this.refreshShades = config.refreshShades === true;
     this.pollShadesForUpdate = config.pollShadesForUpdate === true;
     this.strictErrors = config.strictErrors === true;
@@ -250,6 +270,10 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
         clearTimeout(timer);
       }
       this.debounced.clear();
+      for (const timer of this.stopTimers.values()) {
+        clearTimeout(timer);
+      }
+      this.stopTimers.clear();
     });
   }
 
@@ -262,6 +286,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
         await this.updateShades();
       }
       await this.updateScenes();
+      this.syncStopSwitch();
       this.scheduleBatteryPoll();
       this.scheduleHealSweep();
 
@@ -388,6 +413,12 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
 
   configureAccessory(accessory: PlatformAccessory): void {
     try {
+      if ((accessory.context as Partial<StopSwitchContext>).stopSwitch === true) {
+        this.stopSwitchAccessory = accessory as PlatformAccessory<StopSwitchContext>;
+        this.wireStopSwitch(this.stopSwitchAccessory);
+        return;
+      }
+
       const sceneId = (accessory.context as Partial<SceneContext>).sceneId;
       if (typeof sceneId === 'number' && Number.isFinite(sceneId)) {
         const sceneAccessory = accessory as PlatformAccessory<SceneContext>;
@@ -523,6 +554,10 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       if (typeof shade.id !== 'number' || !Number.isFinite(shade.id)) {
         this.log.warn('Skipping shade with invalid id from hub response');
         continue;
+      }
+
+      if (typeof shade.groupId === 'number' && Number.isFinite(shade.groupId)) {
+        this.shadeGroups.set(shade.id, shade.groupId);
       }
 
       try {
@@ -841,6 +876,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
 
     for (const handler of this.handlers.values()) {
       handler.updateAccessoryInformation();
+      handler.applyStopSupport();
     }
   }
 
@@ -1026,6 +1062,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     }
 
     const key = `${shadeId}:${position}`;
+    this.abandonStopCheck(shadeId);
     clearTimeout(this.debounced.get(key));
     this.debounced.set(key, setTimeout(() => {
       this.debounced.delete(key);
@@ -1074,6 +1111,10 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       callback(new Error(`Unknown position: ${position}`));
       return;
     }
+
+    // A new move overrides a stop: its check would take the move for a missed
+    // stop and halt the shade again.
+    this.abandonStopCheck(shadeId);
 
     try {
       const handler = this.handlers.get(shadeId);
@@ -1253,6 +1294,9 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
         }
         void this.hub.activateScene(sceneId)
           .then(async (shadeIds) => {
+            for (const shadeId of shadeIds ?? [...this.stopTimers.keys(), ...this.stopChecks.keys()]) {
+              this.abandonStopCheck(shadeId);
+            }
             if (shadeIds) {
               this.log.info('Scene %d activated (%d shade(s))', sceneId, shadeIds.length);
             } else {
@@ -1309,6 +1353,212 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       this.handlers.get(shadeId)?.reportArrival(position, to);
       this.cachePositions(shadeId, { [position]: to });
     }, travel));
+  }
+
+  /** Whether to offer stop (Hold Position): the setting, or the hub generation under "auto". */
+  get stopEnabled(): boolean {
+    return resolveStopCommand(this.stopCommand, this.hubCapabilities?.generationHint);
+  }
+
+  /**
+   * Halts a shade, then asks shades where it stopped.
+   *
+   * The hub's reply to a stop echoes the move's target, so it is never applied.
+   * Anything still waiting to move or report the shade is dropped first, or it
+   * would undo the stop. Then {@link confirmStop} finds out where it halted.
+   */
+  async stopShade(shadeId: number): Promise<void> {
+    this.log.info('stopShade %d', shadeId);
+    this.cancelPendingMotion(shadeId);
+    this.handlers.get(shadeId)?.reportStopped();
+
+    await this.hub.stopShade(shadeId);
+    this.scheduleStopCheck(shadeId, STOP_SETTLE_MS, () => this.confirmStop(shadeId, true));
+  }
+
+  /** Adds or removes the Stop Shades switch, once the hub's generation is known. */
+  private syncStopSwitch(): void {
+    const wanted = this.stopSwitch && this.stopEnabled;
+    if (wanted && !this.stopSwitchAccessory) {
+      const accessory = new this.api.platformAccessory<StopSwitchContext>(
+        'Stop Shades',
+        this.api.hap.uuid.generate('stop-switch'),
+      );
+      accessory.context.stopSwitch = true;
+      this.wireStopSwitch(accessory);
+      this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+      this.stopSwitchAccessory = accessory;
+      this.log.info('Adding the Stop Shades switch');
+    } else if (!wanted && this.stopSwitchAccessory) {
+      this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [this.stopSwitchAccessory]);
+      this.stopSwitchAccessory = undefined;
+      this.log.info('Removing the Stop Shades switch');
+    }
+  }
+
+  private wireStopSwitch(accessory: PlatformAccessory<StopSwitchContext>): void {
+    const service = accessory.getService(this.Service.Switch)
+      ?? accessory.addService(this.Service.Switch, accessory.displayName);
+    service
+      .getCharacteristic(this.Characteristic.On)
+      .removeAllListeners('set')
+      .on('set', (value, callback) => {
+        if (value !== true) {
+          callback(null);
+          return;
+        }
+        void this.stopAllShades()
+          .then(() => callback(null))
+          .catch((err) => {
+            logError(this.log, 'Stopping all shades failed:', err);
+            callback(err instanceof Error ? err : new Error(formatError(err)));
+          })
+          .finally(() => {
+            // A button, not a state, so it can be pressed again.
+            service.updateCharacteristic(this.Characteristic.On, false);
+          });
+      });
+  }
+
+  /**
+   * Stops every shade: one command per hub group, so they all halt together,
+   * and one per shade the hub reported no group for. Then each shade is read
+   * the same way as after a single stop.
+   */
+  async stopAllShades(): Promise<void> {
+    const shadeIds = [...this.accessories.keys()];
+    this.log.info('Stopping all %d shades', shadeIds.length);
+    const groups = new Set<number>();
+    const ungrouped: number[] = [];
+    for (const shadeId of shadeIds) {
+      this.cancelPendingMotion(shadeId);
+      this.handlers.get(shadeId)?.reportStopped();
+      const groupId = this.shadeGroups.get(shadeId);
+      if (groupId === undefined) {
+        ungrouped.push(shadeId);
+      } else {
+        groups.add(groupId);
+      }
+    }
+
+    const results = await Promise.allSettled([
+      ...[...groups].map((groupId) => this.hub.stopGroup(groupId)),
+      ...ungrouped.map((shadeId) => this.hub.stopShade(shadeId)),
+    ]);
+    for (const shadeId of shadeIds) {
+      this.scheduleStopCheck(shadeId, STOP_SETTLE_MS, () => this.confirmStop(shadeId, true));
+    }
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (failed) {
+      throw failed.reason;
+    }
+  }
+
+  private cancelPendingMotion(shadeId: number): void {
+    const prefix = `${shadeId}:`;
+    for (const timers of [this.debounced, this.travelTimers]) {
+      for (const [key, timer] of timers) {
+        if (key.startsWith(prefix)) {
+          clearTimeout(timer);
+          timers.delete(key);
+        }
+      }
+    }
+    clearTimeout(this.verifyTimers.get(shadeId));
+    this.verifyTimers.delete(shadeId);
+    this.abandonStopCheck(shadeId);
+  }
+
+  /** Drops a stop check, whether it is waiting or already reading the shade. */
+  private abandonStopCheck(shadeId: number): void {
+    clearTimeout(this.stopTimers.get(shadeId));
+    this.stopTimers.delete(shadeId);
+    this.stopChecks.set(shadeId, (this.stopChecks.get(shadeId) ?? 0) + 1);
+  }
+
+  private scheduleStopCheck(shadeId: number, delay: number, check: () => Promise<void>): void {
+    this.stopTimers.set(shadeId, setTimeout(() => {
+      this.stopTimers.delete(shadeId);
+      if (!this.shuttingDown) {
+        void check();
+      }
+    }, delay));
+  }
+
+  /**
+   * Reads a stopped shade twice. Readings that agree mean it halted, and that
+   * position is shown. Readings that differ mean it missed the stop and is
+   * still moving: it gets one more stop, and after that the plugin waits for
+   * the move to finish. A read that times out carries the hub's stored target,
+   * not the shade's position, so it never counts: the shade is read once more,
+   * and without two answers it is read again once any move would be over.
+   * A new move for the shade ends the check wherever it is.
+   */
+  private async confirmStop(shadeId: number, mayStopAgain: boolean): Promise<void> {
+    const check = this.stopChecks.get(shadeId) ?? 0;
+    const current = () => !this.shuttingDown && (this.stopChecks.get(shadeId) ?? 0) === check;
+
+    const readings: PowerViewShade[] = [];
+    for (let attempt = 0; attempt < 3 && readings.length < 2; attempt++) {
+      const shade = await this.readAfterStop(shadeId);
+      if (!current()) {
+        return;
+      }
+      if (shade) {
+        readings.push(shade);
+      }
+    }
+
+    const [first, second] = readings;
+    if (first && second && positionsSettled(first.positions, second.positions, STOP_SETTLED_TOLERANCE)) {
+      this.applyStoppedShade(second);
+      return;
+    }
+
+    if (second && mayStopAgain) {
+      this.log.warn('Shade %d is still moving after a stop; sending stop again', shadeId);
+      try {
+        await this.hub.stopShade(shadeId);
+      } catch (err) {
+        logError(this.log, `Stopping shade ${shadeId} again failed:`, err);
+      }
+      if (current()) {
+        this.scheduleStopCheck(shadeId, STOP_SETTLE_MS, () => this.confirmStop(shadeId, false));
+      }
+      return;
+    }
+
+    this.log.warn(
+      second
+        ? 'Shade %d did not stop; asking shades again in %ds, once its move is over'
+        : 'Shade %d did not answer twice after a stop; asking shades again in %ds',
+      shadeId, STOP_FINAL_READ_MS / 1000,
+    );
+    this.scheduleStopCheck(shadeId, STOP_FINAL_READ_MS, async () => {
+      const final = await this.readAfterStop(shadeId);
+      if (final) {
+        this.applyStoppedShade(final);
+      }
+    });
+  }
+
+  private async readAfterStop(shadeId: number): Promise<PowerViewShade | undefined> {
+    try {
+      const shade = await this.hub.getShade(shadeId, { refresh: true });
+      if (!shade.timedOut) {
+        return shade;
+      }
+      this.log.warn('Shade %d did not answer after a stop', shadeId);
+    } catch (err) {
+      logError(this.log, `Reading shade ${shadeId} after a stop failed:`, err);
+    }
+    return undefined;
+  }
+
+  private applyStoppedShade(shade: PowerViewShade): void {
+    const positions = this.handlers.get(shade.id)?.updateShadeValues(shade, true) ?? null;
+    this.cachePositions(shade.id, positions);
+    this.log.info('Shade %d stopped at %s', shade.id, JSON.stringify(positions));
   }
 
   async jogShade(shadeId: number): Promise<Partial<Record<HubPosition, number>> | null> {

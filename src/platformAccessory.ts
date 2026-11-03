@@ -98,15 +98,58 @@ export class PowerViewPlatformAccessory {
   }
 
   /**
-   * Drops HoldPosition, including from accessories cached by older versions.
+   * Offers HoldPosition (stop) where the hub honours it, and drops it elsewhere.
    *
-   * The hub answers `motion: "stop"` with a 200 and ignores it: on build 827 a
-   * shade told to stop 6s into travel went all the way. Offering Hold would
-   * claim a stop that never happens.
+   * Build 827 (Gen 1) answers `motion: "stop"` with a 200 and lets the shade
+   * finish its move, so offering Hold there claims a stop that never happens.
+   * Build 1056 (Gen 2) halts the shade. Called again once the hub's generation
+   * is known, since cached accessories are configured before it is.
    */
-  private removeHoldPosition(service: Service): void {
-    if (service.testCharacteristic(this.Characteristic.HoldPosition)) {
-      service.removeCharacteristic(service.getCharacteristic(this.Characteristic.HoldPosition));
+  applyStopSupport(): void {
+    const services = [
+      this.resolveWindowCoveringService(SUBTYPE.BOTTOM),
+      this.resolveWindowCoveringService(SUBTYPE.TOP),
+    ].filter((service): service is Service => service !== undefined);
+
+    for (const service of services) {
+      if (!this.platform.stopEnabled) {
+        if (service.testCharacteristic(this.Characteristic.HoldPosition)) {
+          service.removeCharacteristic(service.getCharacteristic(this.Characteristic.HoldPosition));
+        }
+        continue;
+      }
+
+      service
+        .getCharacteristic(this.Characteristic.HoldPosition)
+        .removeAllListeners('set')
+        .on('set', (value, callback) => {
+          if (value !== true && value !== 1) {
+            callback(null);
+            return;
+          }
+          void this.platform.stopShade(this.shadeId).then(
+            () => callback(null),
+            (err) => callback(err instanceof Error ? err : new Error(String(err))),
+          );
+        });
+    }
+  }
+
+  /** Ends any reported travel where the tile now stands, until the shade is asked. */
+  reportStopped(): void {
+    for (const subtype of [SUBTYPE.BOTTOM, SUBTYPE.TOP]) {
+      const service = this.resolveWindowCoveringService(subtype);
+      if (!service) {
+        continue;
+      }
+      const current = service.getCharacteristic(this.Characteristic.CurrentPosition).value;
+      if (typeof current === 'number') {
+        service.updateCharacteristic(this.Characteristic.TargetPosition, current);
+      }
+      service.updateCharacteristic(
+        this.Characteristic.PositionState,
+        this.Characteristic.PositionState.STOPPED,
+      );
     }
   }
 
@@ -196,7 +239,6 @@ export class PowerViewPlatformAccessory {
       });
 
     this.wireTargetPositionGet(service);
-    this.removeHoldPosition(service);
 
     service
       .getCharacteristic(this.Characteristic.TargetPosition)
@@ -274,6 +316,7 @@ export class PowerViewPlatformAccessory {
       this.accessory.removeService(topService);
     }
 
+    this.applyStopSupport();
     this.wireIdentify();
     this.updateAccessoryInformation();
   }

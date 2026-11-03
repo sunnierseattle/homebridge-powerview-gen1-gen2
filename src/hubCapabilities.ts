@@ -24,10 +24,11 @@ export function generationHintFromHubName(name: string | undefined): HubCapabili
 }
 
 /**
- * Gen 1 and Gen 2 hubs both report mainProcessor.name = "PowerView Hub", so the
- * name alone can never identify the generation. The firmware major revision does:
- * Gen 1 reports revision 1, Gen 2 reports revision 2. Gen 1 hubs additionally
- * expose no `radio` firmware block at all.
+ * Fallback for hubs whose name does not say which generation they are. A Gen 1
+ * hub (build 827) reports mainProcessor.name "PowerView Hub" and a Gen 2 hub
+ * (build 1056) "PV Hub2.0", but older Gen 2 firmware may not. The firmware
+ * major revision does: Gen 1 reports revision 1, Gen 2 reports revision 2.
+ * Gen 1 hubs additionally expose no `radio` firmware block at all.
  */
 export function generationHintFromFirmware(
   firmware: { mainProcessor?: { revision?: number } } | undefined,
