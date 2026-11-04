@@ -1780,6 +1780,22 @@ describe('PowerViewPlatform stopBeforeRetarget', () => {
     expect(puts()).toHaveLength(2);
   });
 
+  it('does not stop for the target the shade is already moving to', async () => {
+    const { platform, puts } = await ready();
+
+    const first = set(platform, 100);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await first.done;
+    const again = set(platform, 100);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await again.done;
+
+    expect(puts().map((p) => p.shade.motion)).not.toContain('stop');
+    // The repeat still goes out, as it does with the option off.
+    expect(puts().map((p) => p.shade.positions?.position1)).toEqual([65535, 65535]);
+    expect(again.callback).toHaveBeenCalledWith(null);
+  });
+
   it('does nothing where stop is off, since the hub would ignore it', async () => {
     const { platform, puts } = await ready(config({ stopBeforeRetarget: true, stopCommand: 'off' }));
 
@@ -1906,13 +1922,14 @@ describe('PowerViewPlatform stopBeforeRetarget', () => {
     await vi.advanceTimersByTimeAsync(3_000);
     await second.done;
 
+    expect(puts().map((p) => p.shade.motion)).toContain('stop');
     expect(puts().filter((p) => !p.shade.motion)).toHaveLength(2);
     expect(second.callback).toHaveBeenCalledWith(null);
   });
 
   it('does not stop a shade whose other rail is still moving', async () => {
     const { platform, puts } = await ready(
-      config({ stopBeforeRetarget: true, forceTopBottomShades: [1] }), TOP_BOTTOM,
+      config({ stopBeforeRetarget: true, stopCommand: 'on', forceTopBottomShades: [1] }), TOP_BOTTOM,
     );
 
     const bottom = set(platform, 100, 1 /* BOTTOM */);

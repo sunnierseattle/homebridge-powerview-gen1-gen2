@@ -1175,6 +1175,8 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       // Only where the hub honours stop; elsewhere it would only add the wait.
       && this.stopEnabled
       && moving && Date.now() < moving.until
+      // The same target again is not a re-target: the shade is already going there.
+      && value !== moving.to
       // Stop halts the whole shade, so it would also cut short a move another
       // rail or the vanes are making. Re-target without it in that case.
       && !this.otherPositionMoving(shadeId, position)
