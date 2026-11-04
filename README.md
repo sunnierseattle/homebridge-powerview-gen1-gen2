@@ -107,7 +107,7 @@ The hub is contacted at `powerview-hub.local` by default.
 | `batteryPolling` | Force a fresh battery reading daily. Wakes the shade motor | `false` |
 | `batteryPollAt` | Local time for the battery poll, `HH:MM` | `14:00` |
 | `syncPositionsOnStart` | Ask shades at startup that the hub has no position for. Wakes those motors | `true` |
-| `quietHours` | Hours when the plugin won't ask shades at startup or on schedule, so an unattended restart cannot wake shades overnight. Asking shades after a move still runs | `21:00`–`08:00` |
+| `quietHours` | Hours when the plugin won't ask shades at startup or on schedule, so an unattended restart cannot wake shades overnight. Asking shades after a move and on every HomeKit read still run | `21:00`–`08:00` |
 | `reportTravel` | Animate travel in HomeKit instead of reporting the commanded position at once | `false` |
 | `stopCommand` | Offer stop (HomeKit Hold Position). `auto` offers it on Gen 2 hubs, which halt the shade, and not on Gen 1 hubs, which ignore it. `on` or `off` overrides | `auto` |
 | `stopSwitch` | Add a Stop Shades switch that stops every shade at once. Works in the Home app and with Siri, which do not offer Hold. Only where stop is on | `false` |
