@@ -11,12 +11,26 @@
 
 Homebridge 1.8+ and 2.x, Node.js 22 or 24. Generation 3 gateways are not supported.
 
+**Tested on Gen 1 and Gen 2 hubs.** See [Tested on](#tested-on).
+
 > **Credits.** This is a fork of [squircle12/homebridge-powerview-3](https://github.com/squircle12/homebridge-powerview-3), itself a TypeScript rewrite of [owenselles/homebridge-powerview-2](https://github.com/owenselles/homebridge-powerview-2), originally by [Scott James Remnant](https://github.com/keybuk). The full upstream commit history is preserved in this repository. This fork adds scene support, and fixes to hub request serialisation, position reporting, battery scaling, shade capability detection, accessory removal, and input handling. See [What this fork changes](#what-this-fork-changes).
 
 ## Requirements
 
 - [Homebridge](https://github.com/homebridge/homebridge) **1.8.0** or **2.0.0**
 - Node.js **22** or **24**
+
+## Tested on
+
+Every release is unit tested. These real hubs and shades were used as well:
+
+| Hub | Firmware | Tested |
+|---|---|---|
+| Gen 1, PowerView Hub | build 827 | Releases up to 5.2.1. Stop: confirmed the hub ignores it, so it stays off |
+| Gen 2, PV Hub2.0 | build 1056, radio 2.0.2610 | 5.3.0: setup, positions, scene switches listed, moves, stop, Stop Shades |
+
+Shades: five standard bottom-up shades (capabilities 0) on shade firmware 1.5.1771 and 2.2.2754.
+Other shade types (vanes, top-down/bottom-up) are covered by unit tests only.
 
 ## Supported shades
 

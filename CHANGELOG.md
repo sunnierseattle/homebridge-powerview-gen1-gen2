@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [5.3.0] - 2026-11-03
+
 ### Added
 
 - **`stopBeforeRetarget`** (default `false`, from PR #3 by Omar Shahine): a different target for a shade
@@ -61,6 +63,10 @@ All notable changes to this project are documented in this file.
 
 - The `generationHintFromFirmware` comment said Gen 2 hubs report `mainProcessor.name` "PowerView
   Hub". A build 1056 hub reports "PV Hub2.0" (which `generationHintFromHubName` already matches).
+- Position help text names every setting that still asks shades during quiet hours, and both
+  settings Pause between shades applies to (#19). Text and tests only.
+- README gains a **Tested on** section: which hub builds and shade firmware each part was checked
+  against.
 
 ## [5.2.1] - 2026-10-22
 

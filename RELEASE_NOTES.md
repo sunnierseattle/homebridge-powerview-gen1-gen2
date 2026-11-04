@@ -38,7 +38,53 @@ User-facing notes for **homebridge-powerview-gen1-gen2** releases. Use this file
 
 ---
 
-## Latest: 5.2.1 (2026-10-22)
+## Latest: 5.3.0 (2026-11-03)
+
+### Highlights
+
+- **Stop a moving shade on a Gen 2 hub.** Add a **Stop Shades** switch that works in the Home app
+  and with Siri, which don't offer HomeKit's own stop control.
+- **Tested on a Gen 2 hub** (build 1056) as well as Gen 1 (build 827).
+
+### Added
+
+- **Stop on Gen 2 hubs** (`stopCommand`, default `auto`). Gen 2 hubs halt a moving shade; Gen 1
+  hubs ignore the stop command. So `auto` turns stop on for Gen 2 and leaves it off for Gen 1.
+  Apps that show HomeKit's Hold control get it on each shade.
+- **Stop Shades switch** (`stopSwitch`, off by default). Apple's Home app and Siri don't show Hold,
+  so this adds one switch that stops every shade at once, one command per PowerView group. It
+  turns itself back off. Tip: add it to a Home scene named "Stop Shades" so "Hey Siri, stop shades"
+  works.
+- **The tile shows where the shade really stopped.** After a stop, the plugin asks each shade
+  twice where it halted. A shade that missed the stop (one in testing missed three of four) gets
+  one more stop, and is asked again once its move is over.
+- **Stop before re-targeting** (`stopBeforeRetarget`, off by default; from Omar Shahine, #3). A
+  new target sent to a shade that is still moving goes out as a stop, a 2-second wait, then the new
+  target. On a Gen 2 hub, redirecting a moving shade ended in the wrong place in 3 of 12 trials,
+  and one shade lost track of where it was until calibrated. Stopping first was right 11 of 11
+  times. A re-target costs about 4 seconds more. Only applies where stop is on.
+
+### Fixed
+
+- **Commands no longer wait behind position checks.** A command sent while the plugin was asking
+  shades where they are used to wait for every check in line: 17 seconds after Stop Shades in
+  testing. It now goes next.
+- **A shade you move after a stop is not stopped again.**
+- **Open, stop, close no longer comes out as close, stop.** A move sent after a stop or jog was
+  merged into one sent before it, so the shade stopped instead of closing.
+
+### Changed
+
+- Position help text names every setting that still asks shades during quiet hours (#19).
+
+### Notes
+
+- **No config changes needed.** On a Gen 2 hub, stop turns on by itself; set `stopCommand` to
+  `off` to keep it off. Nothing changes on Gen 1 hubs except the fixes above.
+
+---
+
+## 5.2.1 (2026-10-22)
 
 ### Changed
 
