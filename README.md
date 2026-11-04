@@ -117,6 +117,7 @@ The hub is contacted at `powerview-hub.local` by default.
 | `pollShadesForUpdate` | Ask hub every 30 seconds for any position changes it has stored. Never wakes a motor | `false` |
 | `requestIntervalMs` | Delay between hub requests. Raise it if your hub struggles under load | `100` |
 | `setPositionDebounceMs` | Wait this long after the last slider value before moving the shade, so a drag sends one move (max 5000). Every command waits, including taps, Siri and automations. `1500` is a good start | `0` |
+| `stopBeforeRetarget` | Stop a moving shade and let it settle before sending it a different target. Only where stop is on | `false` |
 | `strictErrors` | Fail HomeKit reads on hub errors instead of returning the last known position | `false` |
 | `forceRollerShades` | Shade IDs to treat as roller | `[]` |
 | `forceTopBottomShades` | Shade IDs to treat as top/bottom | `[]` |
@@ -172,6 +173,23 @@ four). The reads wake each motor; a slider value still waiting to be sent or a t
 progress is dropped so it cannot undo the stop. Moving a shade or running a scene after a stop ends
 its check, so the plugin never stops it again, and your command goes ahead of any reads still
 waiting.
+
+### Re-targeting a moving shade
+
+A different target sent while a shade is still travelling redirects the motor mid-move, which
+happens with repeated remote presses or a slider dragged back and forth. On a Gen 2 hub (build
+1056) that went wrong in 3 of 12 trials: a shade sent back to 20% ended fully closed, another
+ignored the new target and finished opening, and after a burst of presses one shade lost track of
+where it was. It reported closed while wide open, and only a calibrate fixed it. The hub answered
+every command normally, so nothing in Homebridge could tell.
+
+Set `stopBeforeRetarget` to `true` to send a stop first, wait 2 seconds, and then send the new
+target. In the same trials that ended in the right place 11 times out of 11. Further commands that
+arrive during the wait are folded in, so only the last one is sent. Idle shades are sent their
+target at once, as before, and a re-target costs about 4 seconds more. The stop is skipped when
+another rail of the same shade is still moving, because a stop halts the whole shade. It only
+applies where stop is on (see `stopCommand`), since a Gen 1 hub ignores stop. A stop you send
+yourself during the wait wins: the waiting target is dropped.
 
 Example with host and polling:
 

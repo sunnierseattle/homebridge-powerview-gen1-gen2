@@ -1721,3 +1721,230 @@ describe('PowerViewPlatform stop switch', () => {
     expect([percent(platform, 1), percent(platform, 2), percent(platform, 3)]).toEqual([20, 40, 60]);
   });
 });
+
+describe('PowerViewPlatform stopBeforeRetarget', () => {
+  let harness: Harness;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    harness = createHarness();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  const AT_ZERO = { id: 1, name: 'U2hhZGU=', type: 1, positions: { posKind1: 1, position1: 0 } };
+  const TOP_BOTTOM = {
+    id: 1, name: 'U2hhZGU=', type: 8, capabilities: 7,
+    positions: { posKind1: 1, position1: 0, posKind2: 2, position2: 0 },
+  };
+
+  type Put = { at: number; shade: { motion?: string; positions?: Record<string, number> } };
+
+  // `stopCommand: 'on'`: this hub double reports no generation, so `auto` would leave stop off.
+  async function ready(
+    cfg = config({ stopBeforeRetarget: true, stopCommand: 'on' }),
+    shade: Record<string, unknown> = AT_ZERO,
+  ) {
+    const fetchMock = stubHub([shade]);
+    const platform = new PowerViewPlatform(harness.log, cfg, harness.api);
+    const done = platform.updateShades();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await done;
+    fetchMock.mockClear();
+    const puts = (): Put[] => fetchMock.mock.calls
+      .filter((c) => (c[1] as RequestInit | undefined)?.method === 'PUT')
+      .map((c, i) => ({ at: i, ...(JSON.parse(String((c[1] as RequestInit).body)) as Omit<Put, 'at'>) }));
+    return { platform, fetchMock, puts };
+  }
+
+  function set(platform: PowerViewPlatform, value: number, position = 1 /* BOTTOM */) {
+    const callback = vi.fn();
+    const done = platform.setPosition(1, position, value, callback);
+    return { callback, done };
+  }
+
+  it('is off by default: a mid-travel re-target is sent without a stop', async () => {
+    const { platform, puts } = await ready(config());
+
+    const first = set(platform, 100);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await first.done;
+    const second = set(platform, 20);
+    await vi.advanceTimersByTimeAsync(500);
+    await second.done;
+
+    expect(puts().map((p) => p.shade.motion)).not.toContain('stop');
+    expect(puts()).toHaveLength(2);
+  });
+
+  it('does not stop for the target the shade is already moving to', async () => {
+    const { platform, puts } = await ready();
+
+    const first = set(platform, 100);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await first.done;
+    const again = set(platform, 100);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await again.done;
+
+    expect(puts().map((p) => p.shade.motion)).not.toContain('stop');
+    // The repeat still goes out, as it does with the option off.
+    expect(puts().map((p) => p.shade.positions?.position1)).toEqual([65535, 65535]);
+    expect(again.callback).toHaveBeenCalledWith(null);
+  });
+
+  it('does nothing where stop is off, since the hub would ignore it', async () => {
+    const { platform, puts } = await ready(config({ stopBeforeRetarget: true, stopCommand: 'off' }));
+
+    const first = set(platform, 100);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await first.done;
+    const second = set(platform, 20);
+    await vi.advanceTimersByTimeAsync(500);
+    await second.done;
+
+    expect(puts().map((p) => p.shade.motion)).not.toContain('stop');
+    expect(puts()).toHaveLength(2);
+  });
+
+  it('drops a re-target still waiting when the user stops the shade', async () => {
+    const { platform, puts } = await ready();
+
+    const first = set(platform, 100);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await first.done;
+    const second = set(platform, 20);
+    await vi.advanceTimersByTimeAsync(500);
+    const userStop = platform.stopShade(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await Promise.all([second.done, userStop]);
+
+    expect(second.callback).toHaveBeenCalledWith(null);
+    expect(puts().map((p) => p.shade.positions?.position1)).not.toContain(13107);
+  });
+
+  it('sends a move right after a user stop without a stop of its own', async () => {
+    const { platform, puts } = await ready();
+
+    const first = set(platform, 100);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await first.done;
+    const userStop = platform.stopShade(1);
+    await vi.advanceTimersByTimeAsync(500);
+    await userStop;
+    const after = set(platform, 20);
+    await vi.advanceTimersByTimeAsync(500);
+    await after.done;
+
+    expect(puts().filter((p) => p.shade.motion === 'stop')).toHaveLength(1);
+    expect(puts().at(-1)?.shade.positions?.position1).toBe(13107);
+  });
+
+  it('sends an idle shade its target at once, with no stop', async () => {
+    const { platform, puts } = await ready();
+
+    const first = set(platform, 100);
+    await vi.advanceTimersByTimeAsync(500);
+    await first.done;
+
+    // Nothing is moving, so there is nothing to stop and no settle to wait for.
+    expect(first.callback).toHaveBeenCalledWith(null);
+    expect(puts()).toHaveLength(1);
+    expect(puts()[0].shade.motion).toBeUndefined();
+  });
+
+  it('stops a moving shade and waits before sending the new target', async () => {
+    const { platform, puts } = await ready();
+
+    const first = set(platform, 100);
+    await vi.advanceTimersByTimeAsync(500);
+    await first.done;
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    const second = set(platform, 20);
+    await vi.advanceTimersByTimeAsync(500);
+    // The stop has gone out; the new target waits for the motor to settle.
+    expect(puts().map((p) => p.shade.motion ?? 'move')).toEqual(['move', 'stop']);
+    expect(second.callback).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(2_500);
+    await second.done;
+
+    expect(puts().map((p) => p.shade.motion ?? 'move')).toEqual(['move', 'stop', 'move']);
+    expect(puts()[2].shade.positions?.position1).toBe(Math.round(65535 * 20 / 100));
+    expect(second.callback).toHaveBeenCalledWith(null);
+  });
+
+  it('sends only the last of a burst that arrives while a stop settles', async () => {
+    const { platform, puts } = await ready();
+
+    const first = set(platform, 100);
+    await vi.advanceTimersByTimeAsync(500);
+    await first.done;
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    const a = set(platform, 20);
+    await vi.advanceTimersByTimeAsync(200);
+    const b = set(platform, 60);
+    await vi.advanceTimersByTimeAsync(200);
+    const c = set(platform, 40);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await Promise.all([a.done, b.done, c.done]);
+
+    const moves = puts().filter((p) => !p.shade.motion);
+    expect(puts().filter((p) => p.shade.motion === 'stop')).toHaveLength(1);
+    expect(moves).toHaveLength(2);
+    expect(moves[1].shade.positions?.position1).toBe(Math.round(65535 * 40 / 100));
+    for (const cb of [a.callback, b.callback, c.callback]) {
+      expect(cb).toHaveBeenCalledWith(null);
+    }
+  });
+
+  it('still sends the new target when the stop fails', async () => {
+    const { platform, fetchMock, puts } = await ready();
+    const passthrough = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT' && String(init.body).includes('"stop"')) {
+        return Promise.resolve(hubResponse({}, 400));
+      }
+      return passthrough!(url, init);
+    });
+
+    const first = set(platform, 100);
+    await vi.advanceTimersByTimeAsync(500);
+    await first.done;
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    const second = set(platform, 20);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await second.done;
+
+    expect(puts().map((p) => p.shade.motion)).toContain('stop');
+    expect(puts().filter((p) => !p.shade.motion)).toHaveLength(2);
+    expect(second.callback).toHaveBeenCalledWith(null);
+  });
+
+  it('does not stop a shade whose other rail is still moving', async () => {
+    const { platform, puts } = await ready(
+      config({ stopBeforeRetarget: true, stopCommand: 'on', forceTopBottomShades: [1] }), TOP_BOTTOM,
+    );
+
+    const bottom = set(platform, 100, 1 /* BOTTOM */);
+    await vi.advanceTimersByTimeAsync(500);
+    await bottom.done;
+    const top = set(platform, 50, 2 /* TOP */);
+    await vi.advanceTimersByTimeAsync(500);
+    await top.done;
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // Re-targeting the bottom rail mid-travel would stop the top rail too.
+    const again = set(platform, 30, 1 /* BOTTOM */);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await again.done;
+
+    expect(puts().map((p) => p.shade.motion)).not.toContain('stop');
+  });
+});
