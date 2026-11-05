@@ -252,7 +252,9 @@ describe('PowerViewHub shade request coalescing', () => {
   });
 
   function shadeFetch() {
-    const fetchMock = vi.fn(() => Promise.resolve(hubResponse(({ shade: { id: 1, name: 'U2hhZGU=' } }), 200, 'application/json')));
+    const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(
+      () => Promise.resolve(hubResponse(({ shade: { id: 1, name: 'U2hhZGU=' } }), 200, 'application/json')),
+    );
     vi.stubGlobal('fetch', fetchMock);
     return fetchMock;
   }

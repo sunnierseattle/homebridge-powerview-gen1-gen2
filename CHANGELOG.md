@@ -8,6 +8,9 @@ All notable changes to this project are documented in this file.
 
 - Build with TypeScript 6.0 (was 5.9). The compiled `.js` and `.d.ts` are byte-identical to 5.9's;
   no tsconfig change was needed. 7.0 waits for typescript-eslint, which needs a compiler API 7.0 lacks.
+- Test files are now type-checked: `npm run typecheck` (`tsconfig.test.json`) runs in CI. Dev
+  dependencies homebridge 2.5.0 and hap-nodejs 2.3.0 now share one hap-nodejs copy; two copies
+  (homebridge pinned 2.2.2, tests imported 2.2.3) caused 83 of the 90 type errors in tests.
 
 ## [5.3.0] - 2026-11-03
 

@@ -1606,7 +1606,7 @@ describe('PowerViewPlatform stop switch', () => {
   const HALTED: Record<number, number> = { 1: 13107, 2: 26214, 3: 39321 };
 
   function stubHub(mainProcessor = GEN2) {
-    const fetchMock = vi.fn((url: string) => {
+    const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>((url) => {
       if (url.includes('/api/userdata')) {
         return Promise.resolve(jsonResponse({ userData: { hubName: 'SHVi', firmware: { mainProcessor } } }));
       }
