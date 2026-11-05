@@ -149,7 +149,7 @@ export interface PowerViewPlatformConfig extends PlatformConfig {
   stopSwitch?: boolean;
   /** Send only the last value of a slider drag, after this many ms of rest. 0 disables. */
   setPositionDebounceMs?: number;
-  /** Stop a moving shade before sending it a different target. Firmware-dependent. */
+  /** Stop a moving shade before sending it a different target. Only where stop is on. */
   stopBeforeRetarget?: boolean;
   /** Expose hub scenes as HomeKit switches. Nothing appears if none are defined. */
   exposeScenes?: boolean;

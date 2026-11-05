@@ -65,9 +65,11 @@ describe('config.schema.json form layout', () => {
     expect(schema.form?.slice(0, 2)).toEqual(['name', 'host']);
   });
 
-  // Position is grouped by what each setting asks: the hub (silent), shades
-  // (over RF, in the order they act), quiet hours, then how the tile shows
-  // travel. The pause sits under "Wait before asking": the two add up.
+  // Positions is grouped by what each setting asks: the hub (silent), shades
+  // (over RF, in the order they act), then quiet hours. The pause sits under
+  // "Wait before asking": the two add up. Everything about a move and stopping
+  // it sits in its own section, so stop settings are no longer split between
+  // two sections.
   describe('setting order', () => {
     const section = (title: string) =>
       rawKeys(
@@ -76,8 +78,15 @@ describe('config.schema.json form layout', () => {
         })?.items ?? [],
       );
 
-    it('orders Position by group: hub, shades, quiet hours, Home app', () => {
-      expect(section('Position')).toEqual([
+    it('orders the sections: positions, moving and stopping, scenes, battery, advanced', () => {
+      const titles = (schema.form ?? [])
+        .filter((i) => typeof i !== 'string')
+        .map((i) => (i as { title?: string }).title);
+      expect(titles).toEqual(['Positions', 'Moving and stopping', 'Scenes', 'Battery', 'Advanced']);
+    });
+
+    it('orders Positions by group: hub, shades, quiet hours', () => {
+      expect(section('Positions')).toEqual([
         'pollShadesForUpdate',
         'syncPositionsOnStart',
         'healSweepIntervalMinutes',
@@ -87,14 +96,38 @@ describe('config.schema.json form layout', () => {
         'refreshShades',
         'quietHours.start',
         'quietHours.end',
-        'reportTravel',
-        'stopCommand',
-        'stopSwitch',
       ]);
     });
 
-    it('keeps Advanced free of position settings', () => {
-      expect(section('Advanced')).not.toContain('refreshShades');
+    it('puts every move and stop setting in Moving and stopping', () => {
+      expect(section('Moving and stopping')).toEqual([
+        'reportTravel',
+        'setPositionDebounceMs',
+        'stopCommand',
+        'stopSwitch',
+        'stopBeforeRetarget',
+      ]);
+    });
+
+    it('keeps only rarely needed settings in Advanced', () => {
+      expect(section('Advanced')).toEqual([
+        'strictErrors',
+        'requestIntervalMs',
+        'forceRollerShades',
+        'forceTopBottomShades',
+        'forceHorizontalShades',
+        'forceVerticalShades',
+      ]);
+    });
+
+    // "see Stop command" once pointed at a title that did not exist.
+    it('refers to Offer stop by its title', () => {
+      const props = schema.schema.properties as Record<string, { title?: string; description?: string }>;
+      const offer = props.stopCommand.title ?? '';
+      expect(offer).toBe('Offer stop');
+      for (const k of ['stopSwitch', 'stopBeforeRetarget']) {
+        expect(props[k].description).toContain(`${offer} on`);
+      }
     });
 
     // Two kinds of read, named the same way everywhere: "Ask hub" reads the
@@ -119,7 +152,7 @@ describe('config.schema.json form layout', () => {
   describe('quiet hours', () => {
     type Section = { type?: string; title?: string; helpvalue?: string; items?: FormItem[] };
     const sections = (schema.form ?? []).filter((i): i is Section => typeof i !== 'string');
-    const positions = sections.find((s) => s.title === 'Position');
+    const positions = sections.find((s) => s.title === 'Positions');
     const items = positions?.items ?? [];
     // Flattened in order; containers without a key (help, flex) are marked by type.
     const flat = (list: FormItem[]): string[] =>
@@ -167,20 +200,32 @@ describe('config.schema.json form layout', () => {
       }
     });
 
-    // A setting that asks shades "even during quiet hours" says so in its own
+    // A setting that wakes shades during quiet hours says so in its own
     // description; the quiet hours note has to name it too, or the note reads
     // as if it covers that setting.
     it('names every setting that still asks shades during quiet hours', () => {
       const props = schema.schema.properties as Record<string, { title?: string; description?: string }>;
       const exempt = Object.values(props)
-        .filter((p) => /even during quiet hours/i.test(p.description ?? ''))
+        .filter((p) => /even in quiet hours|quiet hours do not apply/i.test(p.description ?? ''))
         .map((p) => p.title ?? '');
-      expect(exempt.sort()).toEqual(['Ask shades after a move', 'Ask shades on every HomeKit read']);
+      expect(exempt.sort()).toEqual(['Ask shades after a move', 'Ask shades on every HomeKit read', 'Refresh battery daily']);
       const prop = (schema.schema.properties.quietHours as { description: string }).description;
       for (const text of [helpItem?.helpvalue ?? '', prop]) {
         for (const title of exempt) {
           expect(text).toContain(`"${title}"`);
         }
+      }
+    });
+
+    // Only startup and the schedule are held back (platform.ts). Stop checks,
+    // Shade tools checks and a read of a shade with no known position still
+    // wake motors, and the note says so.
+    it('names the asks that are not settings', () => {
+      const prop = (schema.schema.properties.quietHours as { description: string }).description;
+      for (const text of [helpItem?.helpvalue ?? '', prop]) {
+        expect(text).toMatch(/after a stop/i);
+        expect(text).toMatch(/Shade tools/);
+        expect(text).toMatch(/unknown position/i);
       }
     });
   });
@@ -221,13 +266,13 @@ describe('config.schema.json form layout', () => {
     });
   });
 
-  // Position has four groups. Each starts with a help item that draws a small
+  // Positions has three groups. Each starts with a help item that draws a small
   // heading, and every group after the first has a rule above it, so related
   // settings read as a unit without the weight of a section of their own.
-  describe('Position groups', () => {
+  describe('Positions groups', () => {
     type Node = { type?: string; key?: string; helpvalue?: string; items?: FormItem[] };
     const position = (schema.form ?? []).find(
-      (i) => typeof i !== 'string' && (i as { title?: string }).title === 'Position',
+      (i) => typeof i !== 'string' && (i as { title?: string }).title === 'Positions',
     ) as Node | undefined;
     const items = position?.items ?? [];
     // A group heading is the bold, plain-text title a help item draws. Other
@@ -277,8 +322,20 @@ describe('config.schema.json form layout', () => {
           ],
         ],
         ['Quiet hours', ['quietHours.start', 'quietHours.end']],
-        ['In the Home app', ['reportTravel', 'stopCommand', 'stopSwitch']],
       ]);
+    });
+
+    // Three of the four lists had no help at all; one note now covers them.
+    it('explains the shade type overrides once, above the four lists', () => {
+      const advanced = (schema.form ?? []).find(
+        (i) => typeof i !== 'string' && (i as { title?: string }).title === 'Advanced',
+      ) as Node | undefined;
+      const list = advanced?.items ?? [];
+      const at = list.findIndex((i) => typeof i !== 'string' && (i as Node).key === 'forceRollerShades');
+      const note = list[at - 1] as Node;
+      expect(note.type).toBe('help');
+      expect(heading(note)).toBe('Shade type overrides');
+      expect(note.helpvalue).toMatch(/Shade tools/);
     });
 
     it('draws a rule above every group but the first', () => {

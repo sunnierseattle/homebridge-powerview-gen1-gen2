@@ -11,6 +11,22 @@ All notable changes to this project are documented in this file.
 - Test files are now type-checked: `npm run typecheck` (`tsconfig.test.json`) runs in CI. Dev
   dependencies homebridge 2.5.0 and hap-nodejs 2.3.0 now share one hap-nodejs copy; two copies
   (homebridge pinned 2.2.2, tests imported 2.2.3) caused 83 of the 90 type errors in tests.
+- Settings form rewritten for clarity. New sections: **Positions**, **Moving and stopping** (travel,
+  slider wait, Offer stop, Stop Shades, stop before changing course; three of these were in
+  Advanced), Scenes, Battery, Advanced. Shorter descriptions, plainer titles (for example "Strict
+  errors" is now "Show hub errors"), and one help note over the four shade type overrides. Setting
+  keys are unchanged, so existing configs keep working. README sections follow the same order, with
+  the fork history moved below Configuration.
+
+### Fixed
+
+- Quiet hours help now lists everything that still wakes shades: the battery poll, checks after a
+  stop, Shade tools checks and reads of a shade with no known position, as well as the two settings
+  it named before. Quiet hours only hold back asking at startup and on a schedule.
+- `reportTravel` text said the tile shows the real position while moving; it is an estimate.
+- `stopBeforeRetarget` pointed to "Stop command"; the setting is titled "Offer stop".
+- `host` text now says blank uses `powerview-hub.local`.
+- Shade tools showed the raw key `pollShadesForUpdate`; it now uses the setting's title.
 
 ## [5.3.0] - 2026-11-03
 
