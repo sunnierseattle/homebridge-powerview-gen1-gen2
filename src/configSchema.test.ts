@@ -329,7 +329,7 @@ describe('config.schema.json form layout', () => {
 
     // The hours hide while quiet hours are off. The form clears a hidden field
     // (seen on Homebridge UI, 2026-11-05), so the Shade tools page fills in
-    // 10 PM-8 AM when the box is ticked again (homebridge-ui/public/index.html).
+    // 9 PM-8 AM when the box is ticked again (homebridge-ui/public/formDefaults.js).
     it('hides the hours while quiet hours are off', () => {
       const show = new Function('model', row?.condition?.functionBody ?? 'return true;') as (m: unknown) => boolean;
       expect(show({})).toBe(true);
@@ -337,8 +337,8 @@ describe('config.schema.json form layout', () => {
       expect(show({ quietHours: { enabled: false } })).toBe(false);
     });
 
-    // Existing installs keep 9 PM-8 AM; 10 PM-8 AM is only what the Shade
-    // tools page fills in when the box is ticked again.
+    // Existing installs keep 9 PM-8 AM, and ticking the box again brings back
+    // the same hours.
     it('defaults to 9 PM-8 AM', () => {
       const hours = quiet.properties as Record<string, { default?: unknown }>;
       expect([hours.start.default, hours.end.default]).toEqual([21, 8]);

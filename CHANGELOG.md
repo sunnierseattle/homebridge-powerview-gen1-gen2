@@ -23,7 +23,8 @@ All notable changes to this project are documented in this file.
   optional; a missing value still means the default.
 - Number settings are all plain fields; three with a minimum and maximum showed as sliders.
 - The battery refresh time is picked from a 12 AM–11 PM dropdown, like the quiet hours, instead of
-  typed as `HH:MM`. It still saves `HH:00`; a time with minutes set in config.json still works.
+  typed as `HH:MM`. It still saves `HH:00`. A time with minutes set in config.json still runs, but the
+  dropdown shows it blank, and changing it there picks a whole hour.
 - Positions layout: group headings are small and uppercase so they stand apart from settings, the two
   waits share a row, short fields (name and hub address side by side, the minutes, millisecond and stop settings, the
   scene name prefix) are half width, the repeated "Ask hub" description is gone, and the gap above From/Until is
@@ -36,8 +37,9 @@ All notable changes to this project are documented in this file.
 ### Added
 
 - **Quiet hours checkbox** (`quietHours.enabled`, default on). Clear it to turn quiet hours off; From
-  and Until hide while it is off, and come back as 10 PM to 8 AM when it is ticked again.
-- The battery refresh time hides while the daily refresh is off, and comes back as 2 PM. `quietHours: false` and the same hour twice still turn it off too.
+  and Until hide while it is off, and come back as 9 PM to 8 AM when it is ticked again.
+  `quietHours: false` and the same hour twice still turn it off too.
+- The battery refresh time hides while the daily refresh is off, and comes back as 2 PM.
 
 ### Fixed
 

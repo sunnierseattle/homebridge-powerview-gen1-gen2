@@ -65,6 +65,7 @@
   </div>
 </div>
 
+<script src="formDefaults.js"></script>
 <script>
 (function () {
   var shades = {};       // id -> shade
@@ -302,25 +303,11 @@
     if (btn) showTab(btn.getAttribute('data-tab'));
   });
 
-  // The settings form clears a field it hides and leaves it blank when shown
-  // again. Fill in the defaults when quiet hours or the daily battery refresh
-  // is ticked again: 10 PM to 8 AM, and 2 PM.
+  // Refill settings the form cleared when they are ticked again (formDefaults.js).
   homebridge.addEventListener('configChanged', function (ev) {
     var blocks = ev.data;
     var block = blocks && blocks[0];
-    if (!block) return;
-    var changed = false;
-    var q = block.quietHours;
-    if (q !== false && (!q || q.enabled !== false) && (!q || q.start == null || q.end == null)) {
-      q = q || {};
-      block.quietHours = Object.assign({}, q, { start: q.start != null ? q.start : 22, end: q.end != null ? q.end : 8 });
-      changed = true;
-    }
-    if (block.batteryPolling === true && !block.batteryPollAt) {
-      block.batteryPollAt = '14:00';
-      changed = true;
-    }
-    if (changed) homebridge.updatePluginConfig(blocks);
+    if (block && window.PowerViewFormDefaults.fill(block)) homebridge.updatePluginConfig(blocks);
   });
 
   homebridge.addEventListener('ready', function () {
