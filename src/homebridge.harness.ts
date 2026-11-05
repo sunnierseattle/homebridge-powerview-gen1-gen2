@@ -6,7 +6,8 @@
  * production. Only the accessory container and the plugin-facing API surface
  * are stood in for. Excluded from tsconfig, so it never reaches dist.
  */
-import { Categories, Characteristic, Service, uuid } from '@homebridge/hap-nodejs';
+import * as hap from '@homebridge/hap-nodejs';
+import { Categories, Service, uuid } from '@homebridge/hap-nodejs';
 import type { API, Logging, PlatformAccessory } from 'homebridge';
 import { vi } from 'vitest';
 
@@ -92,7 +93,7 @@ export function createHarness(): Harness {
   const updated: PlatformAccessory<ShadeContext>[][] = [];
 
   const api = {
-    hap: { Service, Characteristic, Categories, uuid },
+    hap,
     platformAccessory: HarnessAccessory,
     on(event: string, listener: () => void) {
       const existing = listeners.get(event) ?? [];
