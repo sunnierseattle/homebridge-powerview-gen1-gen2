@@ -7,7 +7,9 @@
   "schema": {
     "type": "object",
     "required": [
-      "name"
+      "name",
+      "stopCommand",
+      "batteryPollAt"
     ],
     "additionalProperties": false,
     "properties": {
@@ -31,8 +33,7 @@
       "pollShadesForUpdate": {
         "title": "Ask hub every 30 seconds",
         "type": "boolean",
-        "default": false,
-        "description": "Pick up any position changes the hub has stored. Never wakes a motor."
+        "default": false
       },
       "strictErrors": {
         "title": "Show hub errors",
@@ -52,10 +53,7 @@
         "type": "integer",
         "default": 4000,
         "minimum": 1000,
-        "description": "Pause between shades when asking several. The hub's radio handles one at a time. Used by \"Ask shades every (minutes)\" and \"Ask shades after a move\".",
-        "condition": {
-          "functionBody": "return model.healSweepIntervalMinutes > 0 || model.verifyAfterMove === true;"
-        }
+        "description": "Pause between shades when asking several. The hub's radio handles one at a time. Used by \"Ask shades every (minutes)\" and \"Ask shades after a move\"."
       },
       "batteryPolling": {
         "title": "Refresh battery daily",
@@ -68,11 +66,7 @@
         "type": "string",
         "default": "14:00",
         "pattern": "^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
-        "placeholder": "14:00",
-        "description": "Local time, as HH:MM.",
-        "condition": {
-          "functionBody": "return model.batteryPolling === true;"
-        }
+        "description": "Local time."
       },
       "syncPositionsOnStart": {
         "title": "Ask shades at startup",
@@ -83,8 +77,13 @@
       "quietHours": {
         "title": "Quiet hours",
         "type": "object",
-        "description": "During these hours, the plugin won't ask shades at startup or on a schedule. Still allowed: \"Ask shades after a move\", \"Ask shades on every HomeKit read\", \"Refresh battery daily\", checks after a stop, Check in Shade tools, and any shade with an unknown position. Set both to the same hour to turn this off.",
+        "description": "Shades aren't asked at startup or on a schedule.",
         "properties": {
+          "enabled": {
+            "title": "Use quiet hours",
+            "type": "boolean",
+            "default": true
+          },
           "start": {
             "title": "Quiet from (hour)",
             "type": "integer",
@@ -99,31 +98,35 @@
             "minimum": 0,
             "maximum": 23
           }
-        }
+        },
+        "required": [
+          "start",
+          "end"
+        ]
       },
       "forceRollerShades": {
-        "title": "Roller",
+        "title": "Roller shade IDs",
         "type": "array",
         "items": {
           "type": "integer"
         }
       },
       "forceTopBottomShades": {
-        "title": "Top-down/bottom-up",
+        "title": "Top-down/bottom-up shade IDs",
         "type": "array",
         "items": {
           "type": "integer"
         }
       },
       "forceHorizontalShades": {
-        "title": "Horizontal vanes",
+        "title": "Horizontal vane shade IDs",
         "type": "array",
         "items": {
           "type": "integer"
         }
       },
       "forceVerticalShades": {
-        "title": "Vertical vanes",
+        "title": "Vertical vane shade IDs",
         "type": "array",
         "items": {
           "type": "integer"
@@ -144,25 +147,19 @@
         "description": "Each PowerView scene becomes a switch in the Home app. A scene moves all its shades together. No switches appear until you create scenes in the PowerView app."
       },
       "excludeScenes": {
-        "title": "Hide these scenes",
+        "title": "Hidden scenes",
         "type": "array",
         "items": {
           "type": "string",
           "title": "Scene name or ID"
         },
-        "description": "Scenes to keep out of the Home app, such as ones only for a remote. Enter the name from the PowerView app, or the scene ID. A scene already in the Home app is removed.",
-        "condition": {
-          "functionBody": "return model.exposeScenes !== false;"
-        }
+        "description": "Scenes to keep out of the Home app, such as ones only for a remote. Enter the name from the PowerView app, or the scene ID. A scene already in the Home app is removed."
       },
       "sceneNamePrefix": {
         "title": "Scene name prefix",
         "type": "string",
         "placeholder": "Scene: ",
-        "description": "Text before each scene's name, so scenes stand apart from shades. Applies to new scenes only.",
-        "condition": {
-          "functionBody": "return model.exposeScenes !== false;"
-        }
+        "description": "Text before each scene's name, so scenes stand apart from shades. Applies to new scenes only."
       },
       "reportTravel": {
         "title": "Show estimated travel",
@@ -171,12 +168,12 @@
         "description": "Off: the tile shows where the shade is going. On: it shows the shade opening or closing, with an estimated position that updates more slowly."
       },
       "stopCommand": {
-        "title": "Offer stop",
+        "title": "Add stop to HomeKit",
         "type": "string",
         "default": "auto",
         "oneOf": [
           {
-            "title": "On for Gen 2 hubs only (recommended)",
+            "title": "Auto (on for Gen 2 hubs)",
             "enum": [
               "auto"
             ]
@@ -194,16 +191,13 @@
             ]
           }
         ],
-        "description": "Adds a stop control to each shade, for apps that show it. Gen 2 hubs stop the shade. Gen 1 hubs ignore it, so the default turns it on only for Gen 2. The Home app and Siri don't show it; use the Stop Shades switch. After a stop, the plugin checks where the shade stopped, which wakes the motor."
+        "description": "Adds a stop control to each shade, for apps that show it. Auto turns it on only for Gen 2 hubs. The Home app and Siri don't show it; use the Stop Shades switch. After a stop, the plugin checks where the shade stopped, which wakes the motor."
       },
       "stopSwitch": {
         "title": "Stop Shades switch",
         "type": "boolean",
         "default": false,
-        "description": "One switch that stops every shade at once, then checks where each one stopped. Works in the Home app and with Siri (\"turn on Stop Shades\"). Needs Offer stop on.",
-        "condition": {
-          "functionBody": "return model.stopCommand !== 'off';"
-        }
+        "description": "One switch that stops every shade at once, then checks where each one stopped. Works in the Home app and with Siri (\"turn on Stop Shades\"). Needs \"Add stop to HomeKit\" on."
       },
       "verifyAfterMove": {
         "title": "Ask shades after a move",
@@ -217,10 +211,7 @@
         "default": 30000,
         "minimum": 5000,
         "maximum": 300000,
-        "description": "How long to wait after the last move. Allow time for a full open or close. Raise it for large or heavy shades.",
-        "condition": {
-          "functionBody": "return model.verifyAfterMove === true;"
-        }
+        "description": "How long to wait after the last move. Allow time for a full open or close. Raise it for large or heavy shades."
       },
       "setPositionDebounceMs": {
         "title": "Wait for slider to settle (ms)",
@@ -234,13 +225,31 @@
         "title": "Stop before changing course",
         "type": "boolean",
         "default": false,
-        "description": "When a moving shade gets a new position, stop it, wait 2 seconds, then send the new one. Changing course mid-move can leave a shade in the wrong place. Skipped if another part of the same shade is moving (top-down/bottom-up shades). Adds about 4 seconds. Needs Offer stop on."
+        "description": "When a moving shade gets a new position, stop it, wait 2 seconds, then send the new one. Changing course mid-move can leave a shade in the wrong place. Skipped if another part of the same shade is moving (top-down/bottom-up shades). Adds about 4 seconds. Needs \"Add stop to HomeKit\" on."
       }
     }
   },
   "form": [
-    "name",
-    "host",
+    {
+      "type": "flex",
+      "flex-flow": "row wrap",
+      "notitle": true,
+      "items": [
+        {
+          "key": "name",
+          "flex": "1 1 0"
+        },
+        {
+          "key": "host",
+          "flex": "1 1 0",
+          "description": ""
+        }
+      ]
+    },
+    {
+      "type": "help",
+      "helpvalue": "<p class=\"grey-text help-block small\">The hub's name or IP address. Leave blank to use powerview-hub.local.</p>"
+    },
     {
       "type": "fieldset",
       "expandable": true,
@@ -249,23 +258,54 @@
       "items": [
         {
           "type": "help",
-          "helpvalue": "<div class=\"fw-semibold\">Ask hub</div><p class=\"grey-text help-block small\">Reads the position the hub has stored. Instant, and never wakes a motor.</p>"
+          "helpvalue": "<div class=\"text-uppercase small fw-semibold opacity-75 mb-1\">Ask hub</div><p class=\"grey-text help-block small\">Reads the position the hub has stored. Instant, and never wakes a motor.</p>"
         },
         "pollShadesForUpdate",
         {
           "type": "help",
-          "helpvalue": "<hr><div class=\"fw-semibold\">Ask shades</div><p class=\"grey-text help-block small\">Asks shades over radio where they are. Each shade asked briefly wakes its motor.</p>"
+          "helpvalue": "<hr><div class=\"text-uppercase small fw-semibold opacity-75 mb-1\">Ask shades</div><p class=\"grey-text help-block small\">Asks shades over radio where they are. Each shade asked briefly wakes its motor.</p>"
         },
         "syncPositionsOnStart",
-        "healSweepIntervalMinutes",
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "notitle": true,
+          "items": [
+            {
+              "key": "healSweepIntervalMinutes",
+              "type": "number",
+              "flex": "0 1 50%",
+              "description": ""
+            }
+          ]
+        },
+        {
+          "type": "help",
+          "helpvalue": "<p class=\"grey-text help-block small\">Ask shades where they are, one at a time, this often. This catches moves made with a remote or the PowerView app. 0 is off. The minimum is 30. Try 720, twice a day.</p>"
+        },
         "verifyAfterMove",
-        "verifyDelayMs",
-        "healSweepGapMs",
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "notitle": true,
+          "items": [
+            {
+              "key": "verifyDelayMs",
+              "type": "number",
+              "flex": "1 1 0"
+            },
+            {
+              "key": "healSweepGapMs",
+              "flex": "1 1 0"
+            }
+          ]
+        },
         "refreshShades",
         {
           "type": "help",
-          "helpvalue": "<hr><div class=\"fw-semibold\">Quiet hours</div><p class=\"grey-text help-block small\">During these hours, the plugin won't ask shades at startup or on a schedule. Still allowed: \"Ask shades after a move\", \"Ask shades on every HomeKit read\", \"Refresh battery daily\", checks after a stop, Check in Shade tools, and any shade with an unknown position. Set both to the same hour to turn this off.</p>"
+          "helpvalue": "<hr><div class=\"text-uppercase small fw-semibold opacity-75 mb-1\">Quiet hours</div><p class=\"grey-text help-block small\">Shades aren't asked at startup or on a schedule.</p>"
         },
+        "quietHours.enabled",
         {
           "type": "flex",
           "flex-flow": "row wrap",
@@ -476,7 +516,11 @@
                 }
               ]
             }
-          ]
+          ],
+          "notitle": true,
+          "condition": {
+            "functionBody": "return !model.quietHours || model.quietHours.enabled !== false;"
+          }
         }
       ],
       "labelHtmlClass": "fs-5",
@@ -486,11 +530,50 @@
       "type": "fieldset",
       "expandable": true,
       "title": "Moving and stopping",
-      "description": "What a tap does, what the tile shows while a shade moves, and stopping it.",
+      "description": "How shades move and stop.",
       "items": [
+        {
+          "type": "help",
+          "helpvalue": "<div class=\"text-uppercase small fw-semibold opacity-75 mb-1\">Moving</div><p class=\"grey-text help-block small\">What a tap sends, and what the tile shows while a shade moves.</p>"
+        },
         "reportTravel",
-        "setPositionDebounceMs",
-        "stopCommand",
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "notitle": true,
+          "items": [
+            {
+              "key": "setPositionDebounceMs",
+              "type": "number",
+              "flex": "0 1 50%",
+              "description": ""
+            }
+          ]
+        },
+        {
+          "type": "help",
+          "helpvalue": "<p class=\"grey-text help-block small\">Wait this long after you stop dragging, so one drag sends one move. Every command waits, including taps, Siri and automations. 0 is off. Try 1500.</p>"
+        },
+        {
+          "type": "help",
+          "helpvalue": "<hr><div class=\"text-uppercase small fw-semibold opacity-75 mb-1\">Stopping</div><p class=\"grey-text help-block small\">Gen 2 hubs can stop a moving shade. Gen 1 hubs ignore stop.</p>"
+        },
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "notitle": true,
+          "items": [
+            {
+              "key": "stopCommand",
+              "flex": "0 1 50%",
+              "description": ""
+            }
+          ]
+        },
+        {
+          "type": "help",
+          "helpvalue": "<p class=\"grey-text help-block small\">Adds a stop control to each shade, for apps that show it. Auto turns it on only for Gen 2 hubs. The Home app and Siri don't show it; use the Stop Shades switch. After a stop, the plugin checks where the shade stopped, which wakes the motor.</p>"
+        },
         "stopSwitch",
         "stopBeforeRetarget"
       ],
@@ -501,7 +584,7 @@
       "type": "fieldset",
       "expandable": true,
       "title": "Scenes",
-      "description": "PowerView scenes as HomeKit switches.",
+      "description": "PowerView scenes as switches in the Home app.",
       "items": [
         "exposeScenes",
         {
@@ -513,7 +596,22 @@
           "labelHtmlClass": "fs-6 fw-light",
           "labelHelpBlockClass": "grey-text help-block small"
         },
-        "sceneNamePrefix"
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "notitle": true,
+          "items": [
+            {
+              "key": "sceneNamePrefix",
+              "flex": "0 1 50%",
+              "description": ""
+            }
+          ]
+        },
+        {
+          "type": "help",
+          "helpvalue": "<p class=\"grey-text help-block small\">Text before each scene's name, so scenes stand apart from shades. Applies to new scenes only.</p>"
+        }
       ],
       "labelHtmlClass": "fs-5",
       "labelHelpBlockClass": "grey-text help-block small"
@@ -522,10 +620,129 @@
       "type": "fieldset",
       "expandable": true,
       "title": "Battery",
-      "description": "Optional daily battery refresh.",
       "items": [
         "batteryPolling",
-        "batteryPollAt"
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "notitle": true,
+          "items": [
+            {
+              "key": "batteryPollAt",
+              "type": "select",
+              "flex": "0 1 50%",
+              "titleMap": [
+                {
+                  "value": "00:00",
+                  "name": "12 AM"
+                },
+                {
+                  "value": "01:00",
+                  "name": "1 AM"
+                },
+                {
+                  "value": "02:00",
+                  "name": "2 AM"
+                },
+                {
+                  "value": "03:00",
+                  "name": "3 AM"
+                },
+                {
+                  "value": "04:00",
+                  "name": "4 AM"
+                },
+                {
+                  "value": "05:00",
+                  "name": "5 AM"
+                },
+                {
+                  "value": "06:00",
+                  "name": "6 AM"
+                },
+                {
+                  "value": "07:00",
+                  "name": "7 AM"
+                },
+                {
+                  "value": "08:00",
+                  "name": "8 AM"
+                },
+                {
+                  "value": "09:00",
+                  "name": "9 AM"
+                },
+                {
+                  "value": "10:00",
+                  "name": "10 AM"
+                },
+                {
+                  "value": "11:00",
+                  "name": "11 AM"
+                },
+                {
+                  "value": "12:00",
+                  "name": "12 PM"
+                },
+                {
+                  "value": "13:00",
+                  "name": "1 PM"
+                },
+                {
+                  "value": "14:00",
+                  "name": "2 PM"
+                },
+                {
+                  "value": "15:00",
+                  "name": "3 PM"
+                },
+                {
+                  "value": "16:00",
+                  "name": "4 PM"
+                },
+                {
+                  "value": "17:00",
+                  "name": "5 PM"
+                },
+                {
+                  "value": "18:00",
+                  "name": "6 PM"
+                },
+                {
+                  "value": "19:00",
+                  "name": "7 PM"
+                },
+                {
+                  "value": "20:00",
+                  "name": "8 PM"
+                },
+                {
+                  "value": "21:00",
+                  "name": "9 PM"
+                },
+                {
+                  "value": "22:00",
+                  "name": "10 PM"
+                },
+                {
+                  "value": "23:00",
+                  "name": "11 PM"
+                }
+              ],
+              "description": ""
+            }
+          ],
+          "condition": {
+            "functionBody": "return model.batteryPolling === true;"
+          }
+        },
+        {
+          "type": "help",
+          "helpvalue": "<p class=\"grey-text help-block small\">Local time.</p>",
+          "condition": {
+            "functionBody": "return model.batteryPolling === true;"
+          }
+        }
       ],
       "labelHtmlClass": "fs-5",
       "labelHelpBlockClass": "grey-text help-block small"
@@ -536,11 +753,31 @@
       "title": "Advanced",
       "description": "Rarely needed.",
       "items": [
-        "strictErrors",
-        "requestIntervalMs",
         {
           "type": "help",
-          "helpvalue": "<hr><div class=\"fw-semibold\">Shade type overrides</div><p class=\"grey-text help-block small\">Use only if a shade shows the wrong controls. Shade numbers (#) are on the Shade tools page.</p>"
+          "helpvalue": "<div class=\"text-uppercase small fw-semibold opacity-75 mb-1\">Hub</div><p class=\"grey-text help-block small\">Change these only if the hub misbehaves.</p>"
+        },
+        "strictErrors",
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "notitle": true,
+          "items": [
+            {
+              "key": "requestIntervalMs",
+              "type": "number",
+              "flex": "0 1 50%",
+              "description": ""
+            }
+          ]
+        },
+        {
+          "type": "help",
+          "helpvalue": "<p class=\"grey-text help-block small\">Time between messages to the hub. Lower is faster, but the hub may miss commands. Raise it if you see errors.</p>"
+        },
+        {
+          "type": "help",
+          "helpvalue": "<hr><div class=\"text-uppercase small fw-semibold opacity-75 mb-1\">Shade type overrides</div><p class=\"grey-text help-block small\">Use only if a shade shows the wrong controls. Shade numbers (#) are on the Shade tools page.</p>"
         },
         {
           "key": "forceRollerShades",

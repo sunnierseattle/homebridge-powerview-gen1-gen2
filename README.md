@@ -76,13 +76,13 @@ The hub is contacted at `powerview-hub.local` by default.
 | `verifyDelayMs` | Wait this long after the last command before asking (5000 to 300000) | `30000` |
 | `healSweepGapMs` | Pause after each shade when asking shades on schedule or after a move | `4000` |
 | `refreshShades` | Ask shades instead of hub on every HomeKit read. Wakes a motor every time, even during quiet hours | `false` |
-| `quietHours` | Hours when the plugin won't ask shades at startup or on schedule, so an unattended restart cannot wake shades overnight. Still allowed: asking after a move, asking on every HomeKit read, the battery poll, checks after a stop, Shade tools checks, and reads of a shade with no known position | `21:00`–`08:00` |
+| `quietHours` | Hours when the plugin won't ask shades at startup or on schedule, so an unattended restart cannot wake shades overnight. Still allowed: asking after a move, asking on every HomeKit read, the battery poll, checks after a stop, Shade tools checks, and reads of a shade with no known position. Set `enabled` to `false` (the form's Quiet hours checkbox) to turn it off | `21:00`–`08:00`, on |
 | `reportTravel` | Show opening/closing and an estimated position while a shade moves, instead of the target at once | `false` |
 | `setPositionDebounceMs` | Wait this long after the last slider value before moving the shade, so a drag sends one move (max 5000). Every command waits, including taps, Siri and automations. `1500` is a good start | `0` |
-| `stopCommand` | Offer stop (HomeKit Hold Position). `auto` offers it on Gen 2 hubs, which halt the shade, and not on Gen 1 hubs, which ignore it. `on` or `off` overrides | `auto` |
+| `stopCommand` | Add stop (HomeKit Hold Position) to each shade. `auto` offers it on Gen 2 hubs, which halt the shade, and not on Gen 1 hubs, which ignore it. `on` or `off` overrides | `auto` |
 | `stopSwitch` | Add a Stop Shades switch that stops every shade at once. Works in the Home app and with Siri, which do not offer Hold. Only where stop is on | `false` |
 | `stopBeforeRetarget` | Stop a moving shade and let it settle before sending it a different target. Only where stop is on | `false` |
-| `exposeScenes` | Expose PowerView scenes as HomeKit switches | `true` |
+| `exposeScenes` | Show PowerView scenes as switches in the Home app | `true` |
 | `excludeScenes` | Scene names (case-insensitive) or hub IDs to keep out of HomeKit | `[]` |
 | `sceneNamePrefix` | Text put in front of new scene switch names, such as `Scene: ` | `""` |
 | `batteryPolling` | Force a fresh battery reading daily. Wakes the shade motor, even during quiet hours | `false` |

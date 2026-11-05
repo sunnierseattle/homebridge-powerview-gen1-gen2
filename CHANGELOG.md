@@ -12,19 +12,45 @@ All notable changes to this project are documented in this file.
   dependencies homebridge 2.5.0 and hap-nodejs 2.3.0 now share one hap-nodejs copy; two copies
   (homebridge pinned 2.2.2, tests imported 2.2.3) caused 83 of the 90 type errors in tests.
 - Settings form rewritten for clarity. New sections: **Positions**, **Moving and stopping** (travel,
-  slider wait, Offer stop, Stop Shades, stop before changing course; three of these were in
-  Advanced), Scenes, Battery, Advanced. Shorter descriptions, plainer titles (for example "Strict
-  errors" is now "Show hub errors"), and one help note over the four shade type overrides. Setting
-  keys are unchanged, so existing configs keep working. README sections follow the same order, with
-  the fork history moved below Configuration.
+  slider wait, stop, Stop Shades, stop before changing course; three of these were in Advanced),
+  Scenes, Battery, Advanced. Shorter descriptions and plainer titles: for example "Strict errors" is
+  now "Show hub errors", "Offer stop" is "Add stop to HomeKit", and "Hide these scenes" is "Hidden
+  scenes", so its button reads "Add hidden scenes". Setting keys are unchanged, so existing configs
+  keep working. README sections follow the same order, with the fork history moved below
+  Configuration.
+- "Add stop to HomeKit" offers three choices: Auto (on for Gen 2 hubs), On, Off. It and the quiet-hours
+  dropdowns no longer show a "None" choice, which the settings UI added because the fields were
+  optional; a missing value still means the default.
+- Number settings are all plain fields; three with a minimum and maximum showed as sliders.
+- The battery refresh time is picked from a 12 AM–11 PM dropdown, like the quiet hours, instead of
+  typed as `HH:MM`. It still saves `HH:00`; a time with minutes set in config.json still works.
+- Positions layout: group headings are small and uppercase so they stand apart from settings, the two
+  waits share a row, short fields (name and hub address side by side, the minutes, millisecond and stop settings, the
+  scene name prefix) are half width, the repeated "Ask hub" description is gone, and the gap above From/Until is
+  closed. Moving and stopping (MOVING, STOPPING) and Advanced (HUB, SHADE TYPE OVERRIDES) use the
+  same small headings, and quiet hours has one too.
+- Shade tools opens with the shades and the scenes both shown, and the longer help text is gone. In
+  Scenes on the hub, Activate stays at the right of each scene, shades are listed in the same order in
+  every scene, and the note is in plain words.
+
+### Added
+
+- **Quiet hours checkbox** (`quietHours.enabled`, default on). Clear it to turn quiet hours off; From
+  and Until hide while it is off, and come back as 10 PM to 8 AM when it is ticked again.
+- The battery refresh time hides while the daily refresh is off, and comes back as 2 PM. `quietHours: false` and the same hour twice still turn it off too.
 
 ### Fixed
 
-- Quiet hours help now lists everything that still wakes shades: the battery poll, checks after a
-  stop, Shade tools checks and reads of a shade with no known position, as well as the two settings
-  it named before. Quiet hours only hold back asking at startup and on a schedule.
+- A setting that hid when another was turned off lost its value: the settings form clears hidden
+  fields, so turning off "Ask shades after a move", the battery refresh, scenes or stop and saving dropped
+  "Wait before asking", "Pause between shades", the refresh time, hidden scenes, the scene name
+  prefix or the Stop Shades switch. These now always show.
+- Quiet hours text named only two settings as still waking shades during quiet hours. It now says
+  only what quiet hours do (no asking at startup or on a schedule); each setting that still wakes
+  shades says so itself, and the README lists every exception, including checks after a stop, Shade
+  tools checks and reads of a shade with no known position.
 - `reportTravel` text said the tile shows the real position while moving; it is an estimate.
-- `stopBeforeRetarget` pointed to "Stop command"; the setting is titled "Offer stop".
+- `stopBeforeRetarget` pointed to "Stop command", a title that did not exist.
 - `host` text now says blank uses `powerview-hub.local`.
 - Shade tools showed the raw key `pollShadesForUpdate`; it now uses the setting's title.
 
