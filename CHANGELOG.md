@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Build with TypeScript 6.0 (was 5.9). The compiled `.js` and `.d.ts` are byte-identical to 5.9's;
+  no tsconfig change was needed. 7.0 waits for typescript-eslint, which needs a compiler API 7.0 lacks.
+
 ## [5.3.0] - 2026-11-03
 
 ### Added
