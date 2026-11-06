@@ -368,6 +368,19 @@ describe('resolveQuietHours', () => {
     expect(resolveQuietHours({ quietHours: { start: 25, end: -3 } }))
       .toEqual({ startHour: 21, endHour: 8 });
   });
+
+  // The settings form's Quiet hours checkbox saves enabled: false and keeps the hours.
+  it('is off when the checkbox is cleared, whatever the hours', () => {
+    const q = resolveQuietHours({ quietHours: { enabled: false, start: 21, end: 8 } });
+    expect(q.startHour).toBe(q.endHour);
+  });
+
+  it('uses the hours when the checkbox is ticked or absent', () => {
+    expect(resolveQuietHours({ quietHours: { enabled: true, start: 22, end: 6 } }))
+      .toEqual({ startHour: 22, endHour: 6 });
+    expect(resolveQuietHours({ quietHours: { enabled: true } as never }))
+      .toEqual({ startHour: 21, endHour: 8 });
+  });
 });
 
 describe('resolveSceneExclusions', () => {

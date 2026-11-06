@@ -13,14 +13,13 @@
   .pv-status { font-size: .8em; opacity: .8; display: block; white-space: normal; max-width: 16rem; }
   .pv-status.pv-bad { opacity: 1; color: var(--bs-danger, #dc3545); }
   .pv-status.pv-ok { opacity: 1; color: var(--bs-success, #198754); }
-  .pv-scene { border-top: 1px solid rgba(128,128,128,.25); padding: .5rem 0; display: flex; align-items: flex-start; gap: .75rem; flex-wrap: wrap; }
-  .pv-scene .pv-scene-name { min-width: 11rem; font-weight: 600; }
+  /* Name | shades | button, so Activate stays in one place however many shades wrap. */
+  .pv-scene { border-top: 1px solid rgba(128,128,128,.25); padding: .5rem 0; display: grid; grid-template-columns: 11rem minmax(0, 1fr) auto; gap: .75rem; align-items: start; }
+  .pv-scene .pv-scene-name { font-weight: 600; }
+  @media (max-width: 576px) { .pv-scene { grid-template-columns: minmax(0, 1fr); gap: .35rem; } .pv-scene .btn { justify-self: start; } }
   .pv-chip { display: inline-block; font-size: .8em; padding: .1rem .45rem; border-radius: 1rem; border: 1px solid rgba(128,128,128,.4); margin: .1rem .25rem .1rem 0; }
   .pv-chip.pv-odd { border-color: var(--bs-warning, #ffc107); }
   .pv-help { font-size: .85em; opacity: .8; }
-  details > summary { cursor: pointer; }
-  .pv-more { text-decoration: underline; margin-left: .25rem; }
-  details[open] .pv-more { display: none; }
 </style>
 
 <div class="pv-wrap">
@@ -39,21 +38,7 @@
           <button id="pv-reload" class="btn btn-sm btn-outline-secondary ms-2" type="button">Reload</button>
         </div>
       </div>
-      <details class="pv-help mb-2">
-        <summary><b>Check</b> reads a shade over radio, <b>Jog</b> wiggles it, <b>Calibrate</b> relearns its limits. <span class="pv-more">More</span></summary>
-        <p class="mt-2 mb-1">
-          <b>Check</b> asks the shade over radio where it really is. It takes a few seconds and briefly wakes the motor.
-          <b>Jog</b> wiggles the shade to prove the radio and motor answer.
-          <b>Calibrate</b> runs it fully up and down to relearn its limits, as the PowerView app does. It takes one to two minutes and must not be interrupted.
-          Positions shown without a check are the hub's cached values.
-        </p>
-        <p class="mb-0">
-          These tools talk to the hub directly, so HomeKit does not hear about them straight away.
-          A check also updates the position the hub keeps. HomeKit catches up the next time the plugin reads the hub:
-          when the shade is next shown in the Home app, or on the next poll if <code>pollShadesForUpdate</code> is on.
-          Each action is written to the Homebridge log.
-        </p>
-      </details>
+      <p class="pv-help mb-2"><b>Check</b> reads a shade over radio, <b>Jog</b> wiggles it, <b>Calibrate</b> relearns its limits.</p>
       <div class="table-responsive">
         <table class="table table-sm pv-table mb-0">
           <thead>
@@ -72,23 +57,21 @@
 
   <div class="card mb-3">
     <div class="card-body">
-      <details>
-        <summary><b>Scenes on the hub</b> <span class="pv-muted">(where each scene sends each shade)</span></summary>
-        <p class="pv-help mt-2 mb-1">Rail values that are not exactly 0% or 100% are highlighted. They usually mean the scene was saved from a partly open shade rather than a true limit.</p>
-        <div id="pv-scenes" class="mt-1"><span class="pv-muted">Open to load.</span></div>
-      </details>
+      <h5 class="mb-1">Scenes on the hub <span class="pv-muted">(where each scene sends each shade)</span></h5>
+        <p class="pv-help mb-1">A position other than 0% or 100% is outlined in yellow. It usually means the scene was saved while that shade was partly open.</p>
+        <div id="pv-scenes" class="mt-1"><span class="pv-muted">Loading…</span></div>
     </div>
   </div>
   </div>
 </div>
 
+<script src="formDefaults.js"></script>
 <script>
 (function () {
   var shades = {};       // id -> shade
   var busy = {};         // id -> true while an action is running
   var pending = {};      // id -> timer for the post-calibrate check
   var armed = {};        // id -> timer for the in-page calibrate confirmation
-  var scenesLoaded = false;
   var rows = document.getElementById('pv-rows');
   var scenesEl = document.getElementById('pv-scenes');
   var KIND = { 1: 'bottom', 2: 'top', 3: 'vanes' };
@@ -172,11 +155,13 @@
     scenesEl.innerHTML = '<span class="pv-muted">Loading…</span>';
     try {
       var list = await homebridge.request('/scenes');
-      scenesLoaded = true;
       if (!list.length) { scenesEl.innerHTML = '<span class="pv-muted">No scenes on the hub.</span>'; return; }
       scenesEl.innerHTML = list.map(function (sc) {
-        var chips = sc.members.map(function (m) {
-          var name = shades[m.shadeId] ? shades[m.shadeId].name : '#' + m.shadeId;
+        // Same shade order in every scene, so scenes are easy to compare.
+        var nameOf = function (m) { return shades[m.shadeId] ? shades[m.shadeId].name : '#' + m.shadeId; };
+        var members = sc.members.slice().sort(function (a, b) { return nameOf(a).localeCompare(nameOf(b)); });
+        var chips = members.map(function (m) {
+          var name = nameOf(m);
           return m.positions.map(function (p) {
             var odd = p.kind !== 3 && p.raw !== 0 && p.raw !== 65535;
             var label = p.kind === 1 && m.positions.length === 1 ? '' : (KIND[p.kind] || 'kind ' + p.kind) + ' ';
@@ -186,8 +171,8 @@
         }).join('');
         return '<div class="pv-scene" data-scene="' + sc.id + '">' +
           '<span class="pv-scene-name">' + esc(sc.name) + ' <span class="pv-muted">#' + sc.id + '</span></span>' +
-          '<span style="flex:1 1 auto">' + (chips || '<span class="pv-muted">no members</span>') + '</span>' +
-          '<button class="btn btn-sm btn-outline-secondary" data-act="scene">Activate</button>' +
+          '<div>' + (chips || '<span class="pv-muted">no members</span>') + '</div>' +
+          '<button class="btn btn-sm btn-outline-primary" data-act="scene">Activate</button>' +
         '</div>';
       }).join('');
     } catch (e) {
@@ -288,12 +273,8 @@
     if (!btn) return;
     activateScene(parseInt(btn.closest('.pv-scene').getAttribute('data-scene'), 10), btn);
   });
-  // Scenes cost one hub request each, so they load only when opened.
-  scenesEl.closest('details').addEventListener('toggle', function (ev) {
-    if (ev.target.open && !scenesLoaded) loadScenes();
-  });
   document.getElementById('pv-reload').addEventListener('click', function () {
-    loadShades().then(function () { if (scenesLoaded) loadScenes(); });
+    loadShades().then(loadScenes);
   });
 
   // Config UI X always draws the settings form below this page, so the tools
@@ -311,7 +292,8 @@
     if (name === 'tools') {
       homebridge.hideSchemaForm();
       // Shades load on first open, so opening settings costs no hub requests.
-      if (!toolsLoaded) { toolsLoaded = true; loadHub(); loadShades(); }
+      // Scenes load after shades, which give their chips names.
+      if (!toolsLoaded) { toolsLoaded = true; loadHub(); loadShades().then(loadScenes); }
     } else {
       homebridge.showSchemaForm();
     }
@@ -321,8 +303,30 @@
     if (btn) showTab(btn.getAttribute('data-tab'));
   });
 
+  // Refill settings the form cleared when they are ticked again (formDefaults.js).
+  homebridge.addEventListener('configChanged', function (ev) {
+    var blocks = ev.data;
+    var block = blocks && blocks[0];
+    if (block && window.PowerViewFormDefaults.fill(block)) homebridge.updatePluginConfig(blocks);
+  });
+
+  // The form shows quiet hours turned off the old way (false, or the same hour
+  // twice) as ticked, and saving false turns them on. Untick the box instead.
+  async function untickOldQuietHoursOff() {
+    try {
+      var saved = await homebridge.request('/quietHoursOffTheOldWay');
+      if (!saved || !saved.off) return;
+      var blocks = await homebridge.getPluginConfig();
+      var block = blocks && blocks[0];
+      if (block && window.PowerViewFormDefaults.untickQuietHours(block)) await homebridge.updatePluginConfig(blocks);
+    } catch (err) {
+      console.log('PowerView tools: could not check quiet hours', err);
+    }
+  }
+
   homebridge.addEventListener('ready', function () {
     showTab('settings');
+    untickOldQuietHoursOff();
   });
 })();
 </script>

@@ -365,7 +365,8 @@ export function isWithinQuietHours(date: Date, startHour: number, endHour: numbe
 export function resolveQuietHours(config: Partial<PowerViewPlatformConfig>): QuietHours {
   const quiet = config.quietHours;
 
-  if (quiet === false) {
+  // false is the older way to turn it off; enabled: false is what the form saves.
+  if (quiet === false || (quiet && quiet.enabled === false)) {
     return { startHour: 0, endHour: 0 };
   }
 

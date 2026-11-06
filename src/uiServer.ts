@@ -4,7 +4,7 @@ import { HomebridgePluginUiServer, RequestError } from '@homebridge/plugin-ui-ut
 
 import { formatError, isHubError } from './errors.js';
 import { PowerViewHub } from './powerviewHub.js';
-import { consoleLogging, hubHostFromConfig, ShadeTools } from './shadeTools.js';
+import { consoleLogging, hubHostFromConfig, quietHoursOffTheOldWay, ShadeTools } from './shadeTools.js';
 
 /**
  * Server half of the shade tools page. Config UI X starts it when the plugin's
@@ -21,6 +21,7 @@ class PowerViewUiServer extends HomebridgePluginUiServer {
     this.route('/motion', (tools, payload) => tools.motion(payload));
     this.route('/scenes', (tools) => tools.scenes());
     this.route('/activateScene', (tools, payload) => tools.activateScene(payload));
+    this.onRequest('/quietHoursOffTheOldWay', async () => ({ off: quietHoursOffTheOldWay(await this.savedConfig()) }));
     this.ready();
   }
 
@@ -40,21 +41,25 @@ class PowerViewUiServer extends HomebridgePluginUiServer {
   /** Built once per session from the saved config, so a changed host needs the page reopened. */
   private getTools(): Promise<ShadeTools> {
     this.tools ??= (async () => {
-      let config: unknown;
-      try {
-        config = this.homebridgeConfigPath
-          ? JSON.parse(await readFile(this.homebridgeConfigPath, 'utf8'))
-          : undefined;
-      } catch (err) {
-        console.log('PowerView tools: could not read config.json (%s); using the default host', formatError(err));
-      }
-      const host = hubHostFromConfig(config);
+      const host = hubHostFromConfig(await this.savedConfig());
       // stdout reaches the Homebridge log: Config UI X forks this server and
       // logs each line as "[Homebridge UI] [homebridge-powerview-gen1-gen2] ...".
       const log = consoleLogging('PowerView tools');
       return new ShadeTools(new PowerViewHub(log, host), host, log);
     })();
     return this.tools;
+  }
+
+  /** config.json as saved on disk, or undefined if it can't be read. */
+  private async savedConfig(): Promise<unknown> {
+    try {
+      return this.homebridgeConfigPath
+        ? JSON.parse(await readFile(this.homebridgeConfigPath, 'utf8'))
+        : undefined;
+    } catch (err) {
+      console.log('PowerView tools: could not read config.json (%s); using defaults', formatError(err));
+      return undefined;
+    }
   }
 }
 

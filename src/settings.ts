@@ -138,7 +138,7 @@ export interface PowerViewPlatformConfig extends PlatformConfig {
   /** How long after the last command to verify. Defaults to 30000. */
   verifyDelayMs?: number;
   /**
-   * Offer stop (HomeKit Hold Position). "auto", the default, offers it on Gen 2
+   * Add stop (HomeKit Hold Position) to each shade. "auto", the default, offers it on Gen 2
    * hubs, which halt a moving shade, and not on Gen 1 hubs, which ignore it.
    */
   stopCommand?: 'auto' | 'on' | 'off';
@@ -149,7 +149,7 @@ export interface PowerViewPlatformConfig extends PlatformConfig {
   stopSwitch?: boolean;
   /** Send only the last value of a slider drag, after this many ms of rest. 0 disables. */
   setPositionDebounceMs?: number;
-  /** Stop a moving shade before sending it a different target. Firmware-dependent. */
+  /** Stop a moving shade before sending it a different target. Only where stop is on. */
   stopBeforeRetarget?: boolean;
   /** Expose hub scenes as HomeKit switches. Nothing appears if none are defined. */
   exposeScenes?: boolean;
@@ -170,8 +170,8 @@ export interface PowerViewPlatformConfig extends PlatformConfig {
   batteryPollAt?: string;
   /** Re-sync positions over RF once at startup. Defaults to true. */
   syncPositionsOnStart?: boolean;
-  /** Local-time window in which nothing may actuate hardware. `false` disables it. */
-  quietHours?: { start: number; end: number } | false;
+  /** Hours when shades are not asked at startup or on a schedule. `false` or `enabled: false` turns it off. */
+  quietHours?: { enabled?: boolean; start: number; end: number } | false;
   forceRollerShades?: number[];
   forceTopBottomShades?: number[];
   forceHorizontalShades?: number[];
