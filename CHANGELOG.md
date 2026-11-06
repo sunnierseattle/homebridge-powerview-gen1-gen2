@@ -6,6 +6,8 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Dependency refresh: `@homebridge/plugin-ui-utils` 2.2.7 (runtime); vitest and
+  `@vitest/coverage-v8` 5.1.0, eslint 10.14.0, typescript-eslint 8.72.1, rimraf 6.1.4 (dev).
 - Build with TypeScript 6.0 (was 5.9). The compiled `.js` and `.d.ts` are byte-identical to 5.9's;
   no tsconfig change was needed. 7.0 waits for typescript-eslint, which needs a compiler API 7.0 lacks.
 - Test files are now type-checked: `npm run typecheck` (`tsconfig.test.json`) runs in CI. Dev
