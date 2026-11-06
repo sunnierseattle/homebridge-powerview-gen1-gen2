@@ -6,6 +6,7 @@ import { HubPosition, PowerViewHub } from './powerviewHub.js';
 import {
   ShadeTools,
   hubHostFromConfig,
+  quietHoursOffTheOldWay,
   requireId,
   requireMotion,
   toolPositions,
@@ -70,6 +71,32 @@ describe('page input validation', () => {
     // Anything else the hub would act on, such as stop or a position, is refused.
     expect(() => requireMotion({ motion: 'stop' })).toThrow(/Unsupported motion/);
     expect(() => requireMotion({})).toThrow(/Unsupported motion/);
+  });
+});
+
+// Before the Quiet hours checkbox, quiet hours were turned off with false or
+// the same hour twice. The form shows both as ticked, and saving false turns
+// quiet hours on (seen on Homebridge UI, 2026-11-05), so the settings page
+// unticks the box for these.
+describe('quietHoursOffTheOldWay', () => {
+  const saved = (quietHours: unknown) => ({ platforms: [{ platform: 'PowerView', quietHours }] });
+
+  it('is true for false and for the same hour twice', () => {
+    expect(quietHoursOffTheOldWay(saved(false))).toBe(true);
+    expect(quietHoursOffTheOldWay(saved({ start: 0, end: 0 }))).toBe(true);
+    expect(quietHoursOffTheOldWay(saved({ enabled: true, start: 7, end: 7 }))).toBe(true);
+  });
+
+  it('is false when quiet hours are on, unset, or already unticked', () => {
+    expect(quietHoursOffTheOldWay(saved({ start: 21, end: 8 }))).toBe(false);
+    expect(quietHoursOffTheOldWay(saved(undefined))).toBe(false);
+    expect(quietHoursOffTheOldWay(saved({ enabled: false }))).toBe(false);
+    expect(quietHoursOffTheOldWay(saved({ enabled: false, start: 0, end: 0 }))).toBe(false);
+  });
+
+  it('is false without a PowerView block or a readable config', () => {
+    expect(quietHoursOffTheOldWay({ platforms: [{ platform: 'Other', quietHours: false }] })).toBe(false);
+    expect(quietHoursOffTheOldWay(undefined)).toBe(false);
   });
 });
 

@@ -98,11 +98,7 @@
             "minimum": 0,
             "maximum": 23
           }
-        },
-        "required": [
-          "start",
-          "end"
-        ]
+        }
       },
       "forceRollerShades": {
         "title": "Roller shade IDs",
@@ -312,6 +308,7 @@
           "items": [
             {
               "key": "quietHours.start",
+              "required": true,
               "type": "select",
               "title": "From",
               "titleMap": [
@@ -415,6 +412,7 @@
             },
             {
               "key": "quietHours.end",
+              "required": true,
               "type": "select",
               "title": "Until",
               "titleMap": [

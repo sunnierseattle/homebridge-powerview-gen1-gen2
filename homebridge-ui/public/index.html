@@ -310,8 +310,23 @@
     if (block && window.PowerViewFormDefaults.fill(block)) homebridge.updatePluginConfig(blocks);
   });
 
+  // The form shows quiet hours turned off the old way (false, or the same hour
+  // twice) as ticked, and saving false turns them on. Untick the box instead.
+  async function untickOldQuietHoursOff() {
+    try {
+      var saved = await homebridge.request('/quietHoursOffTheOldWay');
+      if (!saved || !saved.off) return;
+      var blocks = await homebridge.getPluginConfig();
+      var block = blocks && blocks[0];
+      if (block && window.PowerViewFormDefaults.untickQuietHours(block)) await homebridge.updatePluginConfig(blocks);
+    } catch (err) {
+      console.log('PowerView tools: could not check quiet hours', err);
+    }
+  }
+
   homebridge.addEventListener('ready', function () {
     showTab('settings');
+    untickOldQuietHoursOff();
   });
 })();
 </script>

@@ -20,5 +20,15 @@
     return changed;
   }
 
-  root.PowerViewFormDefaults = { fill: fill };
+  // For a saved config that turned quiet hours off before the checkbox existed.
+  function untickQuietHours(block) {
+    var q = block.quietHours;
+    if (q && q.enabled === false) {
+      return false;
+    }
+    block.quietHours = { enabled: false };
+    return true;
+  }
+
+  root.PowerViewFormDefaults = { fill: fill, untickQuietHours: untickQuietHours };
 })(globalThis);

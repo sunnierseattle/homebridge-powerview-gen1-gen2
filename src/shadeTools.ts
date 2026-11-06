@@ -8,6 +8,7 @@ import {
   formatShadeFirmware,
   parsePositionMap,
   resolveHubHost,
+  resolveQuietHours,
 } from './shadeUtils.js';
 import { PLATFORM_NAME } from './settings.js';
 
@@ -106,6 +107,29 @@ export function hubHostFromConfig(config: unknown, fallback = 'powerview-hub.loc
   const block = platforms.find((p) => (p as { platform?: unknown } | null)?.platform === PLATFORM_NAME) as
     { host?: unknown } | undefined;
   return resolveHubHost(typeof block?.host === 'string' ? block.host : undefined, fallback);
+}
+
+/**
+ * True when the saved config turns quiet hours off the way it was done before
+ * the Quiet hours checkbox: `false`, or the same hour twice. The settings form
+ * shows both as ticked, so the page unticks the box for them.
+ */
+export function quietHoursOffTheOldWay(config: unknown): boolean {
+  const platforms = (config as { platforms?: unknown } | null)?.platforms;
+  if (!Array.isArray(platforms)) {
+    return false;
+  }
+  const block = platforms.find((p) => (p as { platform?: unknown } | null)?.platform === PLATFORM_NAME) as
+    { quietHours?: unknown } | undefined;
+  if (!block || block.quietHours === undefined) {
+    return false;
+  }
+  const quiet = block.quietHours as { enabled?: unknown } | false;
+  if (quiet && quiet.enabled === false) {
+    return false;
+  }
+  const { startHour, endHour } = resolveQuietHours(block as Parameters<typeof resolveQuietHours>[0]);
+  return startHour === endHour;
 }
 
 /** Routes plugin log calls to the UI server's stdout, which Config UI X shows. */

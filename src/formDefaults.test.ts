@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 // The Shade tools page loads this script to refill settings the form cleared.
 // Run it here with a stand-in for the browser's global object.
 const source = readFileSync(new URL('../homebridge-ui/public/formDefaults.js', import.meta.url), 'utf8');
-const scope: { PowerViewFormDefaults?: { fill(block: Record<string, unknown>): boolean } } = {};
+type Helpers = { fill(block: Record<string, unknown>): boolean; untickQuietHours(block: Record<string, unknown>): boolean };
+const scope: { PowerViewFormDefaults?: Helpers } = {};
 new Function('globalThis', source)(scope);
 const fill = (block: Record<string, unknown>) => scope.PowerViewFormDefaults!.fill(block);
 
@@ -59,5 +60,14 @@ describe('Shade tools form defaults', () => {
     expect(set.batteryPollAt).toBe('14:30');
     expect(fill(off)).toBe(false);
     expect(off.batteryPollAt).toBeUndefined();
+  });
+
+  // Used when the saved config turned quiet hours off before the checkbox
+  // existed (false, or the same hour twice).
+  it('unticks quiet hours', () => {
+    const block: Record<string, unknown> = { quietHours: { enabled: true, start: 21, end: 8 } };
+    expect(scope.PowerViewFormDefaults!.untickQuietHours(block)).toBe(true);
+    expect(block.quietHours).toEqual({ enabled: false });
+    expect(scope.PowerViewFormDefaults!.untickQuietHours(block)).toBe(false);
   });
 });

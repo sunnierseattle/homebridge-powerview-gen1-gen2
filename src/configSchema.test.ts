@@ -256,10 +256,20 @@ describe('config.schema.json form layout', () => {
     // The settings UI adds a "None" choice to any dropdown whose field is not
     // required (seen on Homebridge UI, 2026-11-05). Each of these has a default,
     // and the plugin treats a missing value as the default.
+    // Quiet hours mark From/Until required on the form items, not in the
+    // schema: unticking the box clears both, and a schema requirement then
+    // shows "Config validation failed" (seen on Homebridge UI, 2026-11-06).
+    // Marking the form items keeps the dropdowns free of "None".
     it('requires every dropdown field, so the UI adds no "None" choice', () => {
       const root = schema.schema as { required?: string[]; properties: Record<string, { required?: string[] }> };
       expect(root.required).toContain('stopCommand');
-      expect(root.properties.quietHours.required?.sort()).toEqual(['end', 'start']);
+      expect(root.properties.quietHours.required).toBeUndefined();
+      const items = (function all(list: FormItem[]): FormItem[] {
+        return list.flatMap((i) => (typeof i === 'string' ? [i] : [i, ...all(i.items ?? [])]));
+      })(schema.form ?? []);
+      const hours = items.filter((i): i is { key: string; required?: boolean } =>
+        typeof i === 'object' && (i.key === 'quietHours.start' || i.key === 'quietHours.end'));
+      expect(hours.map((i) => [i.key, i.required])).toEqual([['quietHours.start', true], ['quietHours.end', true]]);
     });
 
     // Two kinds of read, named the same way everywhere: "Ask hub" reads the
