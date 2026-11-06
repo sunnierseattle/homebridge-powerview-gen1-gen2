@@ -139,6 +139,12 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
   public readonly accessories = new Map<number, PlatformAccessory<ShadeContext>>();
   private readonly handlers: Map<number, PowerViewPlatformAccessory> = new Map();
 
+  /** A shade for log lines: "40339 (Stairs Blinds)", or the bare id for a shade with no accessory. */
+  shadeLabel(shadeId: number): string {
+    const name = this.accessories.get(shadeId)?.displayName;
+    return name ? `${shadeId} (${name})` : String(shadeId);
+  }
+
   public hubVersion?: string;
   public hubCapabilities?: HubCapabilities;
   private hubName?: string;
@@ -624,12 +630,12 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
               const shadeState = await this.hub.getShade(shade.id);
               handler.updateShadeValues(shadeState);
             } catch (err) {
-              logError(this.log, `Failed to fetch shade ${shade.id} state:`, err);
+              logError(this.log, `Failed to fetch shade ${this.shadeLabel(shade.id)} state:`, err);
             }
           }
         }
       } catch (err) {
-        logError(this.log, `Failed to process shade ${shade.id}:`, err);
+        logError(this.log, `Failed to process shade ${this.shadeLabel(shade.id)}:`, err);
       }
     }
 
@@ -718,7 +724,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
         await this.updateShade(id, true);
         refreshed++;
       } catch (err) {
-        logError(this.log, `Asking shades at startup: failed for shade ${id}:`, err);
+        logError(this.log, `Asking shades at startup: failed for shade ${this.shadeLabel(id)}:`, err);
       }
     }
 
@@ -850,21 +856,21 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     if (announce) {
       // Info: the read wakes the motor, so it must show in the default log
       // even when the shade turns out to be where HomeKit thought.
-      this.log.info('%s: checking shade %d', label, shadeId);
+      this.log.info('%s: checking shade %s', label, this.shadeLabel(shadeId));
     }
     const before = { ...this.lastPositions.get(shadeId) };
     try {
       const { positions, timedOut } = await this.updateShade(shadeId, true);
       if (timedOut) {
-        this.log.warn('%s: shade %d did not answer', label, shadeId);
+        this.log.warn('%s: shade %s did not answer', label, this.shadeLabel(shadeId));
         return false;
       }
       if (!positionMapsEqual(before, positions ?? {})) {
-        this.log.info('%s: shade %d was %j, now %j', label, shadeId, before, positions);
+        this.log.info('%s: shade %s was %j, now %j', label, this.shadeLabel(shadeId), before, positions);
         return true;
       }
     } catch (err) {
-      logError(this.log, `${label}: failed for shade ${shadeId}:`, err);
+      logError(this.log, `${label}: failed for shade ${this.shadeLabel(shadeId)}:`, err);
     }
     return false;
   }
@@ -887,7 +893,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
           this.batteryRefreshDisabled.add(id);
           this.log.debug('Battery refresh not supported for shade %d', id);
         } else {
-          this.log.warn('Battery refresh failed for shade %d:', id, err instanceof Error ? err.message : String(err));
+          this.log.warn('Battery refresh failed for shade %s:', this.shadeLabel(id), err instanceof Error ? err.message : String(err));
         }
       }
     }
@@ -978,11 +984,11 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       }
     } catch (err) {
       if (this.strictErrors) {
-        logError(this.log, `getPosition failed for shade ${shadeId}/${position}:`, err);
+        logError(this.log, `getPosition failed for shade ${this.shadeLabel(shadeId)}/${position}:`, err);
         callback(err instanceof Error ? err : new Error(formatError(err)));
         return;
       }
-      logError(this.log, `getPosition failed for shade ${shadeId}/${position}, using cache:`, err);
+      logError(this.log, `getPosition failed for shade ${this.shadeLabel(shadeId)}/${position}, using cache:`, err);
       callback(null, this.resolvePositionValue(shadeId, position, null));
     }
   }
@@ -1017,7 +1023,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
         this.log.debug('background refresh %d/%d (rf=%s)', shadeId, position, refresh);
         await this.updatePosition(shadeId, position, refresh);
       } catch (err) {
-        logError(this.log, `Background refresh failed for shade ${shadeId}:`, err);
+        logError(this.log, `Background refresh failed for shade ${this.shadeLabel(shadeId)}:`, err);
       } finally {
         this.pendingRefresh.delete(shadeId);
       }
@@ -1047,7 +1053,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     const { positions, timedOut } = await this.updateShade(shadeId, refresh);
 
     if (refresh && timedOut) {
-      this.log.warn('Shade %d did not respond to refresh; using cached position for %d', shadeId, position);
+      this.log.warn('Shade %s did not respond to refresh; using cached position for %d', this.shadeLabel(shadeId), position);
       if (this.strictErrors) {
         throw new HubError('Shade refresh timed out', HubErrorCode.HttpError);
       }
@@ -1055,7 +1061,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     }
 
     if (!positions) {
-      this.log.warn('Hub did not return positions for %d/%d', shadeId, position);
+      this.log.warn('Hub did not return positions for %s/%d', this.shadeLabel(shadeId), position);
       return this.getCachedPosition(shadeId, position) ?? null;
     }
 
@@ -1119,7 +1125,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     value: number,
     callback: (error: Error | null) => void,
   ): Promise<void> {
-    this.log.info('setPosition %d/%d = %d', shadeId, position, value);
+    this.log.info('setPosition %s/%d = %d', this.shadeLabel(shadeId), position, value);
 
     if (typeof value !== 'number' || Number.isNaN(value) || !Number.isFinite(value)) {
       callback(new Error(`Invalid value: ${value}`));
@@ -1226,10 +1232,10 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
   private async stopForRetarget(shadeId: number): Promise<void> {
     try {
       await this.hub.stopShade(shadeId);
-      this.log.info('Shade %d is moving; stopped it before the new target', shadeId);
+      this.log.info('Shade %s is moving; stopped it before the new target', this.shadeLabel(shadeId));
     } catch (err) {
       // Same outcome as without the option: the new target goes out anyway.
-      logError(this.log, `Stop failed for shade ${shadeId}; sending the new target anyway:`, err);
+      logError(this.log, `Stop failed for shade ${this.shadeLabel(shadeId)}; sending the new target anyway:`, err);
     }
     await new Promise((resolve) => setTimeout(resolve, STOP_SETTLE_MS));
   }
@@ -1276,7 +1282,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       this.scheduleVerify(shadeId);
       callback(null);
     } catch (err) {
-      logError(this.log, `setPosition failed for shade ${shadeId}/${position}:`, err);
+      logError(this.log, `setPosition failed for shade ${this.shadeLabel(shadeId)}/${position}:`, err);
       callback(err instanceof Error ? err : new Error(formatError(err)));
     }
   }
@@ -1502,7 +1508,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
    * would undo the stop. Then {@link confirmStop} finds out where it halted.
    */
   async stopShade(shadeId: number): Promise<void> {
-    this.log.info('stopShade %d', shadeId);
+    this.log.info('stopShade %s', this.shadeLabel(shadeId));
     this.cancelPendingMotion(shadeId);
     this.handlers.get(shadeId)?.reportStopped();
 
@@ -1663,11 +1669,11 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     }
 
     if (second && mayStopAgain) {
-      this.log.warn('Shade %d is still moving after a stop; sending stop again', shadeId);
+      this.log.warn('Shade %s is still moving after a stop; sending stop again', this.shadeLabel(shadeId));
       try {
         await this.hub.stopShade(shadeId);
       } catch (err) {
-        logError(this.log, `Stopping shade ${shadeId} again failed:`, err);
+        logError(this.log, `Stopping shade ${this.shadeLabel(shadeId)} again failed:`, err);
       }
       if (current()) {
         this.scheduleStopCheck(shadeId, STOP_SETTLE_MS, () => this.confirmStop(shadeId, false));
@@ -1695,9 +1701,9 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       if (!shade.timedOut) {
         return shade;
       }
-      this.log.warn('Shade %d did not answer after a stop', shadeId);
+      this.log.warn('Shade %s did not answer after a stop', this.shadeLabel(shadeId));
     } catch (err) {
-      logError(this.log, `Reading shade ${shadeId} after a stop failed:`, err);
+      logError(this.log, `Reading shade ${this.shadeLabel(shadeId)} after a stop failed:`, err);
     }
     return undefined;
   }
@@ -1705,7 +1711,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
   private applyStoppedShade(shade: PowerViewShade): void {
     const positions = this.handlers.get(shade.id)?.updateShadeValues(shade, true) ?? null;
     this.cachePositions(shade.id, positions);
-    this.log.info('Shade %d stopped at %s', shade.id, JSON.stringify(positions));
+    this.log.info('Shade %s stopped at %s', this.shadeLabel(shade.id), JSON.stringify(positions));
   }
 
   async jogShade(shadeId: number): Promise<Partial<Record<HubPosition, number>> | null> {
@@ -1728,7 +1734,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
         if (accessory) {
           accessory.context.jogSupported = false;
         }
-        this.log.warn('Jog motion not supported for shade %d', shadeId);
+        this.log.warn('Jog motion not supported for shade %s', this.shadeLabel(shadeId));
         return null;
       }
       throw err;
@@ -1739,7 +1745,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     try {
       await this.jogShade(shadeId);
     } catch (err) {
-      logError(this.log, `Identify/jog failed for shade ${shadeId}:`, err);
+      logError(this.log, `Identify/jog failed for shade ${this.shadeLabel(shadeId)}:`, err);
     }
   }
 
@@ -1760,6 +1766,6 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       return;
     }
     this.posKindErrorLogged.add(shadeId);
-    this.log.warn('Shade %d reported position kind error (%d) from hub', shadeId, POSITION_KIND_ERROR);
+    this.log.warn('Shade %s reported position kind error (%d) from hub', this.shadeLabel(shadeId), POSITION_KIND_ERROR);
   }
 }
