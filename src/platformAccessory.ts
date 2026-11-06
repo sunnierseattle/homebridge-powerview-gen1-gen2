@@ -456,7 +456,7 @@ export class PowerViewPlatformAccessory {
     const serialised = JSON.stringify(shade.positions);
     if (serialised !== this.lastLoggedPositions) {
       this.lastLoggedPositions = serialised;
-      this.log.info('Shade %d reported positions %s', shade.id, serialised);
+      this.log.info('Shade %s reported positions %s', this.platform.shadeLabel(shade.id), serialised);
     }
 
     // Bounded rather than stopping at the first gap: the old loop broke on a
@@ -493,7 +493,7 @@ export class PowerViewPlatformAccessory {
         positions[HubPosition.BOTTOM] = Math.round(100 * hubValue / 65535);
         const service = this.resolveWindowCoveringService(SUBTYPE.BOTTOM);
         if (!service) {
-          this.log.warn('No bottom Window Covering service for shade %d', shade.id);
+          this.log.warn('No bottom Window Covering service for shade %s', this.platform.shadeLabel(shade.id));
           continue;
         }
 
