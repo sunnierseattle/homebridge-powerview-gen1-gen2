@@ -65,6 +65,8 @@ The hub is contacted at `powerview-hub.local` by default.
 
 ## Configuration
 
+<img src="https://raw.githubusercontent.com/sunnierseattle/homebridge-powerview-gen1-gen2/main/assets/screenshots/settings.png" alt="The Settings tab: name and hub address, then collapsible sections for Positions, Moving and stopping, Scenes, Battery and Advanced" width="600">
+
 | Option | Description | Default |
 |--------|-------------|---------|
 | `name` | Platform name in Homebridge | `PowerView` |
@@ -213,8 +215,10 @@ battery on its own schedule anyway. Enable `batteryPolling` to force a daily rea
 
 ### Shade tools
 
-The plugin's settings page in the Homebridge UI opens on a **Shade tools** panel, with the normal
-settings form below it. It covers the jobs that otherwise need the PowerView app:
+The plugin's settings page in the Homebridge UI has two tabs: **Settings**, the normal settings
+form, and **Shade tools**. Shade tools covers the jobs that otherwise need the PowerView app:
+
+<img src="https://raw.githubusercontent.com/sunnierseattle/homebridge-powerview-gen1-gen2/main/assets/screenshots/shade-tools.png" alt="The Shade tools tab: a Hub card with the status light control, a table of shades with position, battery and Position, Signal, Jog and Calibrate buttons, and the scenes on the hub" width="600">
 
 - **Position** asks a shade over radio where it really is, which tells you whether its radio
   answers and whether the Home app's position is real. It wakes the motor briefly.
