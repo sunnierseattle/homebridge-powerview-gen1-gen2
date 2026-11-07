@@ -8,7 +8,9 @@ import {
   hubHostFromConfig,
   quietHoursOffTheOldWay,
   requireId,
+  requireLight,
   requireMotion,
+  toolHubLight,
   toolPositions,
   toolShade,
 } from './shadeTools.js';
@@ -78,6 +80,39 @@ describe('page input validation', () => {
 // the same hour twice. The form shows both as ticked, and saving false turns
 // quiet hours on (seen on Homebridge UI, 2026-11-05), so the settings page
 // unticks the box for these.
+describe('toolHubLight', () => {
+  it('is off only when every channel is 0, since brightness 0 alone leaves the light on', () => {
+    expect(toolHubLight({ red: 0, green: 0, blue: 0, brightness: 0 })).toEqual({ on: false, brightness: 0 });
+    expect(toolHubLight({ red: 0, green: 0, blue: 255, brightness: 50 })).toEqual({ on: true, brightness: 50 });
+    expect(toolHubLight({ red: 0, green: 0, blue: 255, brightness: 0 })).toEqual({ on: true, brightness: 0 });
+  });
+
+  it('is absent when the hub reports no light setting', () => {
+    expect(toolHubLight(undefined)).toBeUndefined();
+  });
+});
+
+describe('requireLight', () => {
+  it('accepts off, or on with a whole brightness from 1 to 100', () => {
+    expect(requireLight({ on: false })).toEqual({ on: false });
+    expect(requireLight({ on: true, brightness: 1 })).toEqual({ on: true, brightness: 1 });
+    expect(requireLight({ on: true, brightness: 100 })).toEqual({ on: true, brightness: 100 });
+  });
+
+  it('refuses anything else', () => {
+    for (const bad of [{}, null, { on: 'yes' }, { on: true }, { on: true, brightness: 0 },
+      { on: true, brightness: 101 }, { on: true, brightness: 2.5 }, { on: true, brightness: '50' }]) {
+      let thrown: unknown;
+      try {
+        requireLight(bad);
+      } catch (err) {
+        thrown = err;
+      }
+      expect(isBadRequest(thrown), JSON.stringify(bad)).toBe(true);
+    }
+  });
+});
+
 describe('quietHoursOffTheOldWay', () => {
   const saved = (quietHours: unknown) => ({ platforms: [{ platform: 'PowerView', quietHours }] });
 
@@ -116,11 +151,25 @@ describe('hubHostFromConfig', () => {
 
 describe('ShadeTools', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
+  let hubColor: Record<string, number> | undefined;
+  /** False to have the hub accept a light change but leave color out of its reply. */
+  let echoColor: boolean;
 
   beforeEach(() => {
     vi.useFakeTimers();
+    hubColor = { red: 0, green: 0, blue: 255, brightness: 50 };
+    echoColor = true;
     fetchMock = vi.fn((url: string, init?: RequestInit) => {
       const u = String(url);
+      if (u.includes('/api/userdata')) {
+        if (init?.method === 'PUT') {
+          hubColor = JSON.parse(String(init.body)).userData.color;
+          if (!echoColor) {
+            return Promise.resolve(hubResponse({ userData: { hubName: 'SHVi', serialNumber: 'abc' } }));
+          }
+        }
+        return Promise.resolve(hubResponse({ userData: { hubName: 'SHVi', serialNumber: 'abc', color: hubColor } }));
+      }
       if (init?.method === 'PUT') {
         return Promise.resolve(hubResponse({ shade: { id: 5, name: 'S2l0Y2hlbg==' } }));
       }
@@ -212,6 +261,51 @@ describe('ShadeTools', () => {
       'calibrate sent to shade 5 (Kitchen)',
       'scene 7 (Open) activated, moving shades none reported',
     ]);
+  });
+
+  const colorPuts = () => fetchMock.mock.calls
+    .filter((c) => String(c[0]).includes('/api/userdata') && (c[1] as RequestInit | undefined)?.method === 'PUT')
+    .map((c) => JSON.parse(String((c[1] as RequestInit).body)).userData.color);
+
+  it('reports the hub light with the hub info, or leaves it out when the hub has none', async () => {
+    expect((await run(tools().hubInfo())).light).toEqual({ on: true, brightness: 50 });
+    hubColor = undefined;
+    expect((await run(tools().hubInfo())).light).toBeUndefined();
+  });
+
+  it('turns the light off by zeroing every channel', async () => {
+    expect(await run(tools().setLight({ on: false }))).toEqual({ on: false, brightness: 0 });
+    expect(colorPuts()).toEqual([{ red: 0, green: 0, blue: 0, brightness: 0 }]);
+  });
+
+  it('turns the light on as blue, the primary hub colour, when it was off', async () => {
+    hubColor = { red: 0, green: 0, blue: 0, brightness: 0 };
+    expect(await run(tools().setLight({ on: true, brightness: 30 }))).toEqual({ on: true, brightness: 30 });
+    expect(colorPuts()).toEqual([{ red: 0, green: 0, blue: 255, brightness: 30 }]);
+  });
+
+  it('keeps the current colour when only the brightness changes', async () => {
+    hubColor = { red: 0, green: 255, blue: 0, brightness: 50 };
+    await run(tools().setLight({ on: true, brightness: 80 }));
+    expect(colorPuts()).toEqual([{ red: 0, green: 255, blue: 0, brightness: 80 }]);
+  });
+
+  it('reports the requested light when the hub echoes no color', async () => {
+    echoColor = false;
+    expect(await run(tools().setLight({ on: false }))).toEqual({ on: false, brightness: 0 });
+    expect(await run(tools().setLight({ on: true, brightness: 20 }))).toEqual({ on: true, brightness: 20 });
+  });
+
+  it('refuses a bad light request without calling the hub', async () => {
+    await expect(tools().setLight({ on: true, brightness: 0 })).rejects.toSatisfy(isBadRequest);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('logs one info line for each light change', async () => {
+    const t = tools();
+    await run(t.setLight({ on: false }));
+    await run(t.setLight({ on: true, brightness: 40 }));
+    expect(infoLines()).toEqual(['hub light turned off', 'hub light turned on at 40%']);
   });
 
   it('logs nothing for read-only listings', async () => {

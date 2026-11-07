@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Shade tools has a **Hub** card with a status light control: Off, On, and brightness 1–100%.
+  Off sets every colour channel and brightness to 0, because a Gen 2 hub keeps the light on at
+  brightness 0 while a colour is set. On keeps the hub's current colour, or blue if it was off.
+  Uses `PUT /api/userdata`, which the vendor docs don't list; on a Gen 2 hub (build 1056) it
+  changes only the light and survives a power cut. Hidden when the hub reports no light setting.
+
 ### Changed
 
 - Dependency refresh: `@homebridge/plugin-ui-utils` 2.2.7 (runtime); vitest and

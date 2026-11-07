@@ -224,6 +224,10 @@ settings form below it. It covers the jobs that otherwise need the PowerView app
   minutes, asks for a second click to confirm, and checks the shade again when it finishes.
 - **Scenes on the hub** shows where each scene sends each shade, and highlights rail positions
   that are not exactly open or closed.
+- **Status light**, in the **Hub** card, turns the hub's LED off, or on at a brightness from 1 to
+  100%. The PowerView app has no setting for it. The hub keeps the setting through restarts and
+  power cuts. Tested on a Gen 2 hub; the control only appears when the hub reports a light
+  setting.
 
 The page talks to the hub from the Homebridge UI's own process, at the `host` in this plugin's
 saved config, using the same request handling as the plugin. Nothing runs unless you press a

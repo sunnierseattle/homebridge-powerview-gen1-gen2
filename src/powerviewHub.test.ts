@@ -579,3 +579,38 @@ describe('PowerViewHub response limits', () => {
     expect(res.data?.shadeData).toEqual([{ id: 1 }]);
   });
 });
+
+describe('PowerViewHub.setHubColor', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it('PUTs only the color to /api/userdata and returns what the hub stored', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(hubResponse({
+      userData: { hubName: 'SHVi', serialNumber: 'abc', color: { red: 0, green: 0, blue: 0, brightness: 0 } },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const pending = hub().setHubColor({ red: 0, green: 0, blue: 0, brightness: 0 });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(await pending).toEqual({ red: 0, green: 0, blue: 0, brightness: 0 });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1/api/userdata');
+    expect(init.method).toBe('PUT');
+    // The hub merges this into its settings; sending anything else would overwrite it.
+    expect(JSON.parse(String(init.body))).toEqual({ userData: { color: { red: 0, green: 0, blue: 0, brightness: 0 } } });
+  });
+
+  it('returns undefined when the hub accepts the change but echoes no color', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(hubResponse({ userData: { hubName: 'SHVi', serialNumber: 'abc' } })));
+
+    const pending = hub().setHubColor({ red: 0, green: 0, blue: 255, brightness: 20 });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(await pending).toBeUndefined();
+  });
+});

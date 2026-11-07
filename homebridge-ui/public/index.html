@@ -20,6 +20,14 @@
   .pv-chip { display: inline-block; font-size: .8em; padding: .1rem .45rem; border-radius: 1rem; border: 1px solid rgba(128,128,128,.4); margin: .1rem .25rem .1rem 0; }
   .pv-chip.pv-odd { border-color: var(--bs-warning, #ffc107); }
   .pv-help { font-size: .85em; opacity: .8; }
+  .pv-light { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem 1rem; }
+  .pv-light[hidden] { display: none; }
+  .pv-light-label { font-weight: 600; display: inline-flex; align-items: center; gap: .5rem; }
+  .pv-led { width: .75rem; height: .75rem; border-radius: 50%; border: 1px solid rgba(128,128,128,.5); }
+  .pv-bright { display: inline-flex; align-items: center; gap: .5rem; margin: 0; font-size: .85em; }
+  .pv-bright input { width: 8rem; }
+  .pv-bright output { min-width: 3ch; }
+  .pv-light .btn[aria-pressed="true"] { background: var(--bs-secondary, #6c757d); color: #fff; }
 </style>
 
 <div class="pv-wrap">
@@ -31,12 +39,29 @@
   <div id="pv-tools" hidden>
   <div class="card mb-3">
     <div class="card-body">
+      <div class="pv-head">
+        <h5>Hub</h5>
+        <span id="pv-hub" class="pv-muted"></span>
+      </div>
+      <div id="pv-light" class="pv-light mt-2" hidden>
+        <span class="pv-light-label"><span id="pv-led" class="pv-led" aria-hidden="true"></span>Status light</span>
+        <span class="btn-group btn-group-sm" role="group" aria-label="Status light">
+          <button id="pv-light-off" class="btn btn-outline-secondary" type="button" aria-pressed="false">Off</button>
+          <button id="pv-light-on" class="btn btn-outline-secondary" type="button" aria-pressed="false">On</button>
+        </span>
+        <label class="pv-bright" for="pv-bright">Brightness
+          <input id="pv-bright" type="range" min="1" max="100" value="50">
+          <output id="pv-bright-out" for="pv-bright">50%</output>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
       <div class="pv-head mb-2">
         <h5>Shade tools</h5>
-        <div>
-          <span id="pv-hub" class="pv-muted"></span>
-          <button id="pv-reload" class="btn btn-sm btn-outline-secondary ms-2" type="button">Reload</button>
-        </div>
+        <button id="pv-reload" class="btn btn-sm btn-outline-secondary" type="button">Reload</button>
       </div>
       <p class="pv-help mb-2"><b>Check</b> reads a shade over radio, <b>Jog</b> wiggles it, <b>Calibrate</b> relearns its limits.</p>
       <div class="table-responsive">
@@ -146,10 +171,54 @@
     try {
       var h = await homebridge.request('/hubinfo');
       el.textContent = h.name + ' · ' + h.host + (h.firmware ? ' · ' + h.firmware : '');
+      showLight(h.light);
     } catch (e) {
       el.textContent = 'Hub unreachable: ' + e.message;
     }
   }
+
+  // The hub's status light. Hidden when the hub reports no light setting.
+  var lightEl = document.getElementById('pv-light');
+  var ledEl = document.getElementById('pv-led');
+  var brightEl = document.getElementById('pv-bright');
+  var brightOut = document.getElementById('pv-bright-out');
+  var lightOffBtn = document.getElementById('pv-light-off');
+  var lightOnBtn = document.getElementById('pv-light-on');
+
+  function showLight(light) {
+    lightEl.hidden = !light;
+    if (!light) return;
+    lightOffBtn.setAttribute('aria-pressed', String(!light.on));
+    lightOnBtn.setAttribute('aria-pressed', String(light.on));
+    // 0 and 1 are the same dimmest level on the hub, and the slider starts at 1.
+    if (light.on) brightEl.value = Math.max(1, light.brightness);
+    brightOut.textContent = brightEl.value + '%';
+    brightEl.disabled = !light.on;
+    ledEl.style.background = light.on ? 'var(--bs-primary, #0d6efd)' : 'transparent';
+    ledEl.style.opacity = light.on ? String(0.35 + brightEl.value / 100 * 0.65) : '';
+  }
+
+  async function setLight(body) {
+    lightOffBtn.disabled = lightOnBtn.disabled = brightEl.disabled = true;
+    try {
+      var res = await homebridge.request('/hubLight', body);
+      showLight(res.light);
+      homebridge.toast.success(body.on ? 'Hub light on at ' + body.brightness + '%' : 'Hub light off', 'PowerView');
+    } catch (e) {
+      homebridge.toast.error('Hub light: ' + e.message, 'PowerView');
+      // Re-read before re-enabling, so the controls show what the hub has.
+      await loadHub();
+    } finally {
+      lightOffBtn.disabled = lightOnBtn.disabled = false;
+      brightEl.disabled = lightOnBtn.getAttribute('aria-pressed') !== 'true';
+    }
+  }
+
+  lightOffBtn.addEventListener('click', function () { setLight({ on: false }); });
+  lightOnBtn.addEventListener('click', function () { setLight({ on: true, brightness: Number(brightEl.value) }); });
+  brightEl.addEventListener('input', function () { brightOut.textContent = brightEl.value + '%'; });
+  // One request when the slider is released, not one per step.
+  brightEl.addEventListener('change', function () { setLight({ on: true, brightness: Number(brightEl.value) }); });
 
   async function loadScenes() {
     scenesEl.innerHTML = '<span class="pv-muted">Loading…</span>';
