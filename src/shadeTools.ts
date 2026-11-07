@@ -24,6 +24,12 @@ import { PLATFORM_NAME } from './settings.js';
 
 export type ShadeMotion = 'jog' | 'calibrate';
 
+/** A shade's signal as the page shows it. No `rssi` means the shade did not answer. */
+export interface ToolSignal {
+  id: number;
+  rssi?: number;
+}
+
 export interface ToolHubLight {
   on: boolean;
   brightness: number;
@@ -199,6 +205,9 @@ export class ShadeTools {
     private readonly log: Logging,
   ) {}
 
+  /** Shade names from the last listing, so log lines can name a surveyed shade. */
+  private readonly names = new Map<number, string>();
+
   async hubInfo(): Promise<{ host: string; name: string; firmware?: string; light?: ToolHubLight }> {
     const userData = await this.hub.getUserData();
     const main = userData.firmware?.mainProcessor;
@@ -236,14 +245,35 @@ export class ShadeTools {
   }
 
   async shades(): Promise<ToolShade[]> {
-    return (await this.hub.getShades()).map(toolShade).sort((a, b) => a.name.localeCompare(b.name));
+    const list = (await this.hub.getShades()).map(toolShade).sort((a, b) => a.name.localeCompare(b.name));
+    for (const shade of list) {
+      this.names.set(shade.id, shade.name);
+    }
+    return list;
   }
 
   /** A real RF round-trip: the one read that says where the motor actually is. */
-  async check(payload: unknown): Promise<ToolShade> {
+  async position(payload: unknown): Promise<ToolShade> {
     const shade = toolShade(await this.hub.getShade(requireId(payload), { refresh: true }));
-    this.log.info('check sent to shade %d (%s)%s', shade.id, shade.name, shade.timedOut ? ': radio timed out' : '');
+    this.log.info('position read sent to shade %d (%s)%s', shade.id, shade.name, shade.timedOut ? ': radio timed out' : '');
     return shade;
+  }
+
+  /**
+   * How well the hub hears a shade, from a radio survey. Reports the strongest
+   * link, in dBm; no `rssi` means the shade did not answer.
+   */
+  async signal(payload: unknown): Promise<ToolSignal> {
+    const id = requireId(payload);
+    const neighbors = await this.hub.surveyShade(id);
+    const name = this.names.get(id) ?? `Shade ${id}`;
+    if (!neighbors.length) {
+      this.log.info('signal survey sent to shade %d (%s): no answer', id, name);
+      return { id };
+    }
+    const rssi = Math.max(...neighbors.map((n) => n.rssi));
+    this.log.info('signal survey sent to shade %d (%s): %s', id, name, `${rssi} dBm`);
+    return { id, rssi };
   }
 
   async motion(payload: unknown): Promise<ToolShade> {

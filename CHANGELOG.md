@@ -6,6 +6,11 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Shade tools has a **Signal** button and column: it surveys a shade over radio
+  (`GET /api/shades/{id}?survey=true`, not in the vendor docs) and shows the strongest link in dBm,
+  or **No answer**. About 6 seconds per shade; the shade doesn't move. A Gen 2 hub (build 1056)
+  answers; a Gen 1 hub (build 827) ignores the parameter.
+
 - Shade tools has a **Hub** card with a status light control: Off, On, and brightness 1–100%.
   Off sets every colour channel and brightness to 0, because a Gen 2 hub keeps the light on at
   brightness 0 while a colour is set. On keeps the hub's current colour, or blue if it was off.
@@ -14,6 +19,16 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Shade tools: **Check** is renamed **Position**, after the column it updates; read-only buttons
+  (Position, Signal) now come before the ones that move the shade (Jog, Calibrate). The log line
+  reads `position read sent to shade …` (was `check sent to shade …`). The **Power** column is now
+  **Battery** and shows just the percentage, with **Low** only when the hub reports a low battery.
+- Shade tools layout: the four row buttons stay on one line, and all buttons are more compact.
+  The raw hub position value moved from beside the percentage into a tooltip. Row messages clear
+  after 5 seconds (a message for a request still running waits for its result), and the calibrate
+  confirmation window is 5 seconds (was 8). The **Radio timed out** label under the battery is
+  gone: it came from a hub flag that lingers long after the read that set it; a Position read
+  that times out still says so.
 - Dependency refresh: `@homebridge/plugin-ui-utils` 2.2.7 (runtime); vitest and
   `@vitest/coverage-v8` 5.1.0, eslint 10.14.0, typescript-eslint 8.72.1, rimraf 6.1.4 (dev).
 - Build with TypeScript 6.0 (was 5.9). The compiled `.js` and `.d.ts` are byte-identical to 5.9's;

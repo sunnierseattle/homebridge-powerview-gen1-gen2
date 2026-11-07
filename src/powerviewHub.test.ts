@@ -580,6 +580,37 @@ describe('PowerViewHub response limits', () => {
   });
 });
 
+describe('PowerViewHub.surveyShade', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  async function survey(reply: unknown) {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(hubResponse(reply));
+    vi.stubGlobal('fetch', fetchMock);
+    const pending = hub().surveyShade(1342);
+    await vi.advanceTimersByTimeAsync(20_000);
+    return { result: await pending, url: String(fetchMock.mock.calls[0][0]) };
+  }
+
+  it('asks the shade for its radio neighbours and returns them', async () => {
+    const { result, url } = await survey({ shade_id: 1342, survey: [{ neighbor_id: 0, rssi: -64 }] });
+    expect(url).toBe('http://127.0.0.1/api/shades/1342?survey=true');
+    expect(result).toEqual([{ neighborId: 0, rssi: -64 }]);
+  });
+
+  it('returns no neighbours when the shade does not answer', async () => {
+    expect((await survey({})).result).toEqual([]);
+  });
+
+  it('skips entries without a numeric rssi', async () => {
+    const { result } = await survey({ shade_id: 1342, survey: [{ neighbor_id: 0 }, { neighbor_id: 2, rssi: -70 }, null] });
+    expect(result).toEqual([{ neighborId: 2, rssi: -70 }]);
+  });
+});
+
 describe('PowerViewHub.setHubColor', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
