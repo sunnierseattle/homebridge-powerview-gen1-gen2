@@ -163,6 +163,20 @@ describe('PowerViewPlatform.updateShades', () => {
       .filter((url) => /\/api\/shades\/\d+/.test(url));
   }
 
+  it('names a shade in log lines once it has an accessory', async () => {
+    // 'U2hhZGU=' is "Shade", base64 as the hub sends it.
+    stubHub([{ id: 1, name: 'U2hhZGU=', type: 1, positions: { posKind1: 1, position1: 0 } }]);
+    const platform = new PowerViewPlatform(harness.log, config(), harness.api);
+    expect(platform.shadeLabel(1)).toBe('1');
+
+    const done = platform.updateShades();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await done;
+
+    expect(platform.shadeLabel(1)).toBe('1 (Shade)');
+    expect(platform.shadeLabel(99)).toBe('99');
+  });
+
   it('does not refetch a shade the list already reported positions for', async () => {
     const fetchMock = stubHub([
       { id: 1, name: 'U2hhZGU=', type: 23, positions: { posKind1: 1, position1: 49151 } },
@@ -892,7 +906,7 @@ describe('PowerViewPlatform healSweepIntervalMinutes', () => {
     await vi.advanceTimersByTimeAsync(61 * 60_000);
 
     expect(harness.log.info).toHaveBeenCalledWith(
-      '%s: shade %d was %j, now %j', 'Asking shades on schedule', 1, { 1: 100 }, { 1: 0 },
+      '%s: shade %s was %j, now %j', 'Asking shades on schedule', '1 (One)', { 1: 100 }, { 1: 0 },
     );
     expect(harness.log.info).toHaveBeenCalledWith('Asking shades on schedule: done, %d shade(s) corrected', 1);
   });
@@ -965,9 +979,9 @@ describe('PowerViewPlatform verifyAfterMove', () => {
     expect(rfReads()).toHaveLength(1);
     // The Home app now shows where the shade really is, not the target.
     expect(service?.getCharacteristic(Characteristic.CurrentPosition).value).toBe(0);
-    expect(harness.log.info).toHaveBeenCalledWith('%s: checking shade %d', 'Asking shades after a move', 1);
+    expect(harness.log.info).toHaveBeenCalledWith('%s: checking shade %s', 'Asking shades after a move', '1 (Shade)');
     // Same wording as a correction found when asking shades on schedule.
-    expect(harness.log.info).toHaveBeenCalledWith('%s: shade %d was %j, now %j', 'Asking shades after a move', 1, { 1: 80 }, { 1: 0 });
+    expect(harness.log.info).toHaveBeenCalledWith('%s: shade %s was %j, now %j', 'Asking shades after a move', '1 (Shade)', { 1: 80 }, { 1: 0 });
   });
 
   it('logs the check even when the shade is where HomeKit thought', async () => {
@@ -976,8 +990,10 @@ describe('PowerViewPlatform verifyAfterMove', () => {
     await set(platform, 0);
     await vi.advanceTimersByTimeAsync(35_000);
 
-    expect(harness.log.info).toHaveBeenCalledWith('%s: checking shade %d', 'Asking shades after a move', 1);
-    expect(harness.log.info).not.toHaveBeenCalledWith('%s: shade %d was %j, now %j', 'Asking shades after a move', 1, expect.anything(), expect.anything());
+    expect(harness.log.info).toHaveBeenCalledWith('%s: checking shade %s', 'Asking shades after a move', '1 (Shade)');
+    expect(harness.log.info).not.toHaveBeenCalledWith(
+      '%s: shade %s was %j, now %j', 'Asking shades after a move', '1 (Shade)', expect.anything(), expect.anything(),
+    );
   });
 
   it('verifies a burst of moves once, after the last one', async () => {
@@ -1065,7 +1081,7 @@ describe('PowerViewPlatform verifyAfterMove', () => {
     expect(rfReads()).toEqual(['1']);
     await vi.advanceTimersByTimeAsync(3_000);
     expect(rfReads()).toEqual(['1', '2']);
-    expect(harness.log.info).toHaveBeenCalledWith('%s: shade %d was %j, now %j', 'Asking shades after a move', 2, { 1: 100 }, { 1: 0 });
+    expect(harness.log.info).toHaveBeenCalledWith('%s: shade %s was %j, now %j', 'Asking shades after a move', '2 (Two)', { 1: 100 }, { 1: 0 });
   });
 });
 
