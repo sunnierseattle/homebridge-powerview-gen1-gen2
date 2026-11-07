@@ -5,11 +5,14 @@
   .pv-muted { opacity: .7; font-size: .85em; }
   .pv-table td, .pv-table th { vertical-align: middle; white-space: nowrap; }
   .pv-table td.pv-name { white-space: normal; min-width: 10rem; }
-  .pv-bar { position: relative; width: 7rem; height: .55rem; border-radius: .3rem; background: rgba(128,128,128,.25); overflow: hidden; display: inline-block; vertical-align: middle; margin-right: .4rem; }
+  .pv-bar { position: relative; width: 4.5rem; height: .55rem; border-radius: .3rem; background: rgba(128,128,128,.25); overflow: hidden; display: inline-block; vertical-align: middle; margin-right: .4rem; }
   .pv-bar > span { position: absolute; left: 0; top: 0; bottom: 0; background: currentColor; opacity: .75; }
   .pv-actions { white-space: normal !important; }
-  .pv-actions .pv-btns { display: flex; flex-wrap: wrap; gap: .25rem; }
+  /* One line of buttons; on a narrow screen the table scrolls sideways instead. */
+  .pv-actions .pv-btns { display: flex; flex-wrap: nowrap; gap: .25rem; }
   .pv-wrap .btn { text-transform: none; }
+  /* Compact buttons: the Homebridge theme's small size is still large for a table row. */
+  .pv-wrap .btn-sm, .pv-wrap .btn-group-sm > .btn { padding: .1rem .45rem; font-size: .8rem; line-height: 1.4; }
   .pv-status { font-size: .8em; opacity: .8; display: block; white-space: normal; max-width: 16rem; }
   .pv-status.pv-bad { opacity: 1; color: var(--bs-danger, #dc3545); }
   .pv-status.pv-ok { opacity: 1; color: var(--bs-success, #198754); }
@@ -63,18 +66,19 @@
         <h5>Shade tools</h5>
         <button id="pv-reload" class="btn btn-sm btn-outline-secondary" type="button">Reload</button>
       </div>
-      <p class="pv-help mb-2"><b>Check</b> reads a shade over radio, <b>Jog</b> wiggles it, <b>Calibrate</b> relearns its limits.</p>
+      <p class="pv-help mb-2"><b>Position</b> asks a shade where it is, <b>Signal</b> measures how well the hub hears it, <b>Jog</b> wiggles it, <b>Calibrate</b> relearns its limits.</p>
       <div class="table-responsive">
         <table class="table table-sm pv-table mb-0">
           <thead>
             <tr>
               <th>Shade</th>
               <th>Position</th>
-              <th>Power</th>
+              <th>Battery</th>
+              <th>Signal</th>
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="pv-rows"><tr><td colspan="4" class="pv-muted">Loading…</td></tr></tbody>
+          <tbody id="pv-rows"><tr><td colspan="5" class="pv-muted">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -95,7 +99,8 @@
 (function () {
   var shades = {};       // id -> shade
   var busy = {};         // id -> true while an action is running
-  var pending = {};      // id -> timer for the post-calibrate check
+  var pending = {};      // id -> timer for the post-calibrate position read
+  var signals = {};      // id -> { busy } while surveying, then { rssi } (no rssi: no answer)
   var armed = {};        // id -> timer for the in-page calibrate confirmation
   var rows = document.getElementById('pv-rows');
   var scenesEl = document.getElementById('pv-scenes');
@@ -105,19 +110,28 @@
 
   // The hub reports a voltage for hardwired shades too; only Hunter Douglas'
   // own power supply reports as plugged in (status 4).
+  // The column is titled Battery, so only a low battery gets a word.
   function powerText(s) {
     if (s.batteryStatus === 4) return 'Plugged in';
-    var map = { 0: 'Not reported', 1: 'Low', 2: 'Medium', 3: 'Good' };
-    var label = map[s.batteryStatus] || 'Unknown';
-    return typeof s.batteryPercent === 'number' ? label + ' (' + s.batteryPercent + '%)' : label;
+    if (typeof s.batteryPercent !== 'number') return s.batteryStatus === 1 ? 'Low' : 'Not reported';
+    return (s.batteryStatus === 1 ? 'Low ' : '') + s.batteryPercent + '%';
+  }
+
+  function signalHtml(id) {
+    var sig = signals[id];
+    if (!sig) return '<span class="pv-muted">—</span>';
+    if (sig.busy) return '<span class="pv-muted">Asking the shade…</span>';
+    if (typeof sig.rssi !== 'number') return '<span class="text-danger">No answer. Try again.</span>';
+    return esc(String(sig.rssi).replace('-', '\u2212')) + ' dBm';
   }
 
   function posHtml(s) {
     if (!s.positions.length) return '<span class="pv-muted">no position cached</span>';
     return s.positions.map(function (p) {
       var label = s.positions.length > 1 || p.kind === 3 ? (KIND[p.kind] || 'kind ' + p.kind) + ' ' : '';
-      return '<div><span class="pv-bar"><span style="width:' + p.percent + '%"></span></span>' +
-        esc(label) + p.percent + '% <span class="pv-muted">(' + esc(p.raw) + ')</span></div>';
+      // The hub's raw value (0-65535, or 0-32767 for vanes) is in the tooltip, to keep the row narrow.
+      return '<div title="Hub value ' + esc(p.raw) + '"><span class="pv-bar"><span style="width:' + p.percent + '%"></span></span>' +
+        esc(label) + p.percent + '%</div>';
     }).join('');
   }
 
@@ -129,16 +143,20 @@
 
   function render() {
     var list = Object.keys(shades).map(function (k) { return shades[k]; }).sort(function (a, b) { return a.name.localeCompare(b.name); });
-    if (!list.length) { rows.innerHTML = '<tr><td colspan="4" class="pv-muted">The hub returned no shades.</td></tr>'; return; }
+    if (!list.length) { rows.innerHTML = '<tr><td colspan="5" class="pv-muted">The hub returned no shades.</td></tr>'; return; }
     rows.innerHTML = list.map(function (s) {
       var dis = busy[s.id] ? ' disabled' : '';
       return '<tr data-id="' + s.id + '">' +
         '<td class="pv-name"><b>' + esc(s.name) + '</b><br><span class="pv-muted">#' + s.id + ' · type ' + esc(s.type) +
           (s.firmware ? ' · fw ' + esc(s.firmware) : '') + '</span></td>' +
         '<td>' + posHtml(s) + statusHtml(s) + '</td>' +
-        '<td>' + (s.timedOut ? '<span class="text-danger">Radio timed out</span><br>' : '') + '<span class="pv-muted">' + esc(powerText(s)) + '</span></td>' +
+        // A timed-out read is reported by the Position action's message, not here:
+        // the hub's flag lingers on the shade long after the read that set it.
+        '<td><span class="' + (s.batteryStatus === 1 ? 'text-danger' : 'pv-muted') + '">' + esc(powerText(s)) + '</span></td>' +
+        '<td>' + signalHtml(s.id) + '</td>' +
         '<td class="pv-actions"><div class="pv-btns">' +
-          '<button class="btn btn-sm btn-outline-primary" data-act="check"' + dis + '>Check</button>' +
+          '<button class="btn btn-sm btn-outline-primary" data-act="position"' + dis + '>Position</button>' +
+          '<button class="btn btn-sm btn-outline-primary" data-act="signal"' + dis + '>Signal</button>' +
           '<button class="btn btn-sm btn-outline-secondary" data-act="jog"' + dis + '>Jog</button>' +
           '<button class="btn btn-sm ' + (armed[s.id] ? 'btn-danger' : 'btn-outline-danger') + '" data-act="calibrate"' + dis + '>' +
             (armed[s.id] ? 'Confirm calibrate' : 'Calibrate') + '</button>' +
@@ -146,8 +164,24 @@
     }).join('');
   }
 
+  // Every message clears after 5 seconds. A message shown while a request is
+  // still running ("Asking the shade over radio…") waits for its result instead.
+  var MESSAGE_MS = 5000;
+  var statusTimers = {}; // id -> timer that clears the message
+
   function setStatus(id, kind, text) {
-    if (shades[id]) { shades[id]._status = text ? { kind: kind, text: text } : null; render(); }
+    if (!shades[id]) return;
+    clearTimeout(statusTimers[id]);
+    var st = text ? { kind: kind, text: text } : null;
+    shades[id]._status = st;
+    if (st) {
+      statusTimers[id] = setTimeout(function clear() {
+        if (!shades[id] || shades[id]._status !== st) return;
+        if (busy[id]) { statusTimers[id] = setTimeout(clear, MESSAGE_MS); return; }
+        shades[id]._status = null; render();
+      }, MESSAGE_MS);
+    }
+    render();
   }
 
   function absorb(s, keepStatus) {
@@ -162,7 +196,7 @@
       list.forEach(function (s) { absorb(s, true); });
       render();
     } catch (e) {
-      rows.innerHTML = '<tr><td colspan="4" class="text-danger">Could not reach the hub: ' + esc(e.message) + '</td></tr>';
+      rows.innerHTML = '<tr><td colspan="5" class="text-danger">Could not reach the hub: ' + esc(e.message) + '</td></tr>';
     }
   }
 
@@ -249,16 +283,16 @@
     }
   }
 
-  async function check(id, quiet) {
+  async function position(id, quiet) {
     busy[id] = true; setStatus(id, '', 'Asking the shade over radio…');
     try {
-      var s = await homebridge.request('/check', { id: id });
+      var s = await homebridge.request('/position', { id: id });
       absorb(s, false);
       if (s.timedOut) {
         setStatus(id, 'bad', 'The hub could not reach the shade. If this keeps happening, power-cycle the shade, then calibrate it.');
         if (!quiet) homebridge.toast.error(s.name + ': radio timed out', 'PowerView');
       } else {
-        setStatus(id, 'ok', 'Checked over radio just now. HomeKit picks this up on the plugin\'s next read of the hub.');
+        setStatus(id, 'ok', 'Read over radio just now. HomeKit picks this up on the plugin\'s next read of the hub.');
         if (!quiet) homebridge.toast.success(s.name + ' answered', 'PowerView');
       }
     } catch (e) {
@@ -278,14 +312,31 @@
         setStatus(id, 'ok', 'Jog sent. If the shade wiggled, its radio and motor are fine.');
         homebridge.toast.success(name + ': jog sent', 'PowerView');
       } else {
-        setStatus(id, '', 'Calibrating: full travel up and down. HomeKit shows the old position until the check in 2 minutes ' +
+        setStatus(id, '', 'Calibrating: full travel up and down. HomeKit shows the old position until the position read in 2 minutes ' +
           '(keep this page open for it) and the plugin\'s next read of the hub after that.');
         homebridge.toast.info(name + ': calibration started', 'PowerView');
         clearTimeout(pending[id]);
-        pending[id] = setTimeout(function () { check(id, false); }, 120000);
+        pending[id] = setTimeout(function () { position(id, false); }, 120000);
       }
     } catch (e) {
       setStatus(id, 'bad', e.message);
+      homebridge.toast.error(name + ': ' + e.message, 'PowerView');
+    } finally {
+      busy[id] = false; render();
+    }
+  }
+
+  // About 6 seconds of radio. The shade does not move.
+  async function signal(id) {
+    var name = shades[id] ? shades[id].name : '#' + id;
+    busy[id] = true; signals[id] = { busy: true }; render();
+    try {
+      var r = await homebridge.request('/signal', { id: id });
+      signals[id] = { rssi: r.rssi };
+      if (typeof r.rssi === 'number') homebridge.toast.success(name + ': ' + r.rssi + ' dBm', 'PowerView');
+      else homebridge.toast.error(name + ': no answer to the signal survey', 'PowerView');
+    } catch (e) {
+      delete signals[id];
       homebridge.toast.error(name + ': ' + e.message, 'PowerView');
     } finally {
       busy[id] = false; render();
@@ -308,7 +359,7 @@
   // it: Config UI X renders plugin pages in a sandboxed iframe without
   // allow-modals, so confirm() returns false without showing anything. The
   // first click arms the button and the second runs it.
-  var ARM_MS = 8000;
+  var ARM_MS = 5000;
 
   function disarm(id) {
     if (!armed[id]) return;
@@ -320,7 +371,7 @@
     var name = shades[id] ? shades[id].name : '#' + id;
     armed[id] = setTimeout(function () { delete armed[id]; setStatus(id, '', ''); }, ARM_MS);
     setStatus(id, 'bad', 'Press "Confirm calibrate" to run ' + name + ' fully up and down (1 to 2 minutes). ' +
-      'Do not interrupt it. This cancels itself in 8 seconds.');
+      'Do not interrupt it. This cancels itself in 5 seconds.');
   }
 
   rows.addEventListener('click', function (ev) {
@@ -334,7 +385,8 @@
       return;
     }
     disarm(id);
-    if (act === 'check') check(id, false);
+    if (act === 'position') position(id, false);
+    else if (act === 'signal') signal(id);
     else motion(id, act);
   });
   scenesEl.addEventListener('click', function (ev) {

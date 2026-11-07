@@ -154,11 +154,14 @@ describe('ShadeTools', () => {
   let hubColor: Record<string, number> | undefined;
   /** False to have the hub accept a light change but leave color out of its reply. */
   let echoColor: boolean;
+  /** What the hub answers to ?survey=true. {} is a shade that did not answer. */
+  let surveyReply: unknown;
 
   beforeEach(() => {
     vi.useFakeTimers();
     hubColor = { red: 0, green: 0, blue: 255, brightness: 50 };
     echoColor = true;
+    surveyReply = { shade_id: 5, survey: [{ neighbor_id: 0, rssi: -64 }] };
     fetchMock = vi.fn((url: string, init?: RequestInit) => {
       const u = String(url);
       if (u.includes('/api/userdata')) {
@@ -172,6 +175,9 @@ describe('ShadeTools', () => {
       }
       if (init?.method === 'PUT') {
         return Promise.resolve(hubResponse({ shade: { id: 5, name: 'S2l0Y2hlbg==' } }));
+      }
+      if (u.includes('survey=true')) {
+        return Promise.resolve(hubResponse(surveyReply));
       }
       if (u.includes('/api/scenemembers')) {
         return Promise.resolve(hubResponse({
@@ -219,8 +225,8 @@ describe('ShadeTools', () => {
     expect(list.map((s) => s.name)).toEqual(['Kitchen', 'Stairs']);
   });
 
-  it('checks a shade with an RF refresh', async () => {
-    await run(tools().check({ id: 5 }));
+  it('reads a shade position with an RF refresh', async () => {
+    await run(tools().position({ id: 5 }));
     const urls = fetchMock.mock.calls.map((c) => String(c[0]));
     expect(urls.some((u) => u.includes('/api/shades/5') && u.includes('refresh=true'))).toBe(true);
   });
@@ -234,7 +240,8 @@ describe('ShadeTools', () => {
 
   it('refuses a bad id or motion without calling the hub', async () => {
     await expect(tools().motion({ id: 5, motion: 'stop' })).rejects.toSatisfy(isBadRequest);
-    await expect(tools().check({ id: 'x' })).rejects.toSatisfy(isBadRequest);
+    await expect(tools().position({ id: 'x' })).rejects.toSatisfy(isBadRequest);
+    await expect(tools().signal({ id: 0 })).rejects.toSatisfy(isBadRequest);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -251,12 +258,12 @@ describe('ShadeTools', () => {
     const t = tools();
     await run(t.scenes());
     toolLog.info.mockClear();
-    await run(t.check({ id: 5 }));
+    await run(t.position({ id: 5 }));
     await run(t.motion({ id: 5, motion: 'jog' }));
     await run(t.motion({ id: 5, motion: 'calibrate' }));
     await run(t.activateScene({ id: 7 }));
     expect(infoLines()).toEqual([
-      'check sent to shade 5 (Kitchen)',
+      'position read sent to shade 5 (Kitchen)',
       'jog sent to shade 5 (Kitchen)',
       'calibrate sent to shade 5 (Kitchen)',
       'scene 7 (Open) activated, moving shades none reported',
@@ -306,6 +313,34 @@ describe('ShadeTools', () => {
     await run(t.setLight({ on: false }));
     await run(t.setLight({ on: true, brightness: 40 }));
     expect(infoLines()).toEqual(['hub light turned off', 'hub light turned on at 40%']);
+  });
+
+  it('reports a shade signal in dBm from a radio survey', async () => {
+    expect(await run(tools().signal({ id: 5 }))).toEqual({ id: 5, rssi: -64 });
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(urls).toContain('http://127.0.0.1/api/shades/5?survey=true');
+  });
+
+  it('reports the strongest link when the shade hears more than one neighbour', async () => {
+    surveyReply = { shade_id: 5, survey: [{ neighbor_id: 0, rssi: -80 }, { neighbor_id: 3, rssi: -58 }] };
+    expect(await run(tools().signal({ id: 5 }))).toEqual({ id: 5, rssi: -58 });
+  });
+
+  it('reports no reading when the shade does not answer the survey', async () => {
+    surveyReply = {};
+    expect(await run(tools().signal({ id: 5 }))).toEqual({ id: 5 });
+  });
+
+  it('logs one info line per signal survey, naming the shade once the list has loaded', async () => {
+    const t = tools();
+    await run(t.signal({ id: 5 }));
+    await run(t.shades());
+    surveyReply = {};
+    await run(t.signal({ id: 5 }));
+    expect(infoLines()).toEqual([
+      'signal survey sent to shade 5 (Shade 5): -64 dBm',
+      'signal survey sent to shade 5 (Kitchen): no answer',
+    ]);
   });
 
   it('logs nothing for read-only listings', async () => {

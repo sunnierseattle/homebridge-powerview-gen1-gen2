@@ -117,6 +117,12 @@ export interface HubFirmware {
   };
 }
 
+/** One radio link a shade reported in a survey, in dBm. */
+export interface ShadeNeighbor {
+  neighborId: number;
+  rssi: number;
+}
+
 /** The hub's status light. Channels run 0-255, brightness 0-100. */
 export interface HubColor {
   red: number;
@@ -674,6 +680,28 @@ export class PowerViewHub {
       throw new HubError(`Hub returned no shade data for shade ${shadeId}`, HubErrorCode.EmptyBody);
     }
     return json.shade;
+  }
+
+  /**
+   * Asks a shade over radio how well it hears its neighbours.
+   *
+   * In neither vendor doc. A Gen 2 hub on build 1056 answers in about 6s with
+   * `{"shade_id":1342,"survey":[{"neighbor_id":0,"rssi":-64}]}`, and with `{}`
+   * when the shade does not answer. A Gen 1 hub on build 827 ignores the
+   * parameter and returns the cached shade, which has no `survey`, so it reads
+   * as no answer. The shade does not move.
+   */
+  async surveyShade(shadeId: number): Promise<ShadeNeighbor[]> {
+    const json = await this.fetchJson<{ survey?: unknown }>(
+      this.baseUrl(`/api/shades/${shadeId}?survey=true`),
+    );
+    if (!Array.isArray(json.survey)) {
+      return [];
+    }
+    return json.survey
+      .filter((n): n is { neighbor_id?: unknown; rssi: number } =>
+        typeof n === 'object' && n !== null && typeof (n as { rssi?: unknown }).rssi === 'number')
+      .map((n) => ({ neighborId: Number(n.neighbor_id), rssi: n.rssi }));
   }
 
   private getShadeQueued(

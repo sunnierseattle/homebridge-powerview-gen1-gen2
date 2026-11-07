@@ -216,12 +216,20 @@ battery on its own schedule anyway. Enable `batteryPolling` to force a daily rea
 The plugin's settings page in the Homebridge UI opens on a **Shade tools** panel, with the normal
 settings form below it. It covers the jobs that otherwise need the PowerView app:
 
-- **Check** asks a shade over radio where it really is, which tells you whether its radio answers
-  and whether the Home app's position is real. It wakes the motor briefly.
+- **Position** asks a shade over radio where it really is, which tells you whether its radio
+  answers and whether the Home app's position is real. It wakes the motor briefly.
+- **Signal** asks a shade how well it hears the hub and shows the reading in dBm. Closer to zero
+  is stronger; a shade that doesn't answer shows **No answer**. It takes about 6 seconds and
+  doesn't move the shade. Gen 2 hubs only: a Gen 1 hub ignores the request, so every shade shows
+  No answer.
 - **Jog** wiggles a shade to prove its radio and motor respond.
 - **Calibrate** runs a shade fully up and down to relearn its limits, as the PowerView app does.
   Use it when a shade stops short or reports a position it never reached. It takes one to two
-  minutes, asks for a second click to confirm, and checks the shade again when it finishes.
+  minutes, asks for a second click to confirm, and reads the shade's position again when it
+  finishes.
+
+The **Battery** column shows the charge as a percentage, **Low** in red when the hub reports a low
+battery, and **Plugged in** for shades on a Hunter Douglas power supply.
 - **Scenes on the hub** shows where each scene sends each shade, and highlights rail positions
   that are not exactly open or closed.
 - **Status light**, in the **Hub** card, turns the hub's LED off, or on at a brightness from 1 to
