@@ -605,6 +605,11 @@ describe('PowerViewHub.surveyShade', () => {
     expect((await survey({})).result).toEqual([]);
   });
 
+  it('returns no neighbours when a Gen 1 hub ignores survey and sends the plain shade', async () => {
+    const { result } = await survey({ shade: { id: 1342, name: 'S2l0Y2hlbg==', batteryStrength: 160 } });
+    expect(result).toEqual([]);
+  });
+
   it('skips entries without a numeric rssi', async () => {
     const { result } = await survey({ shade_id: 1342, survey: [{ neighbor_id: 0 }, { neighbor_id: 2, rssi: -70 }, null] });
     expect(result).toEqual([{ neighborId: 2, rssi: -70 }]);
