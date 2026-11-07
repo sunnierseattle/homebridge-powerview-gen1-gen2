@@ -99,6 +99,47 @@ describe('PowerViewHub.requestJson', () => {
   });
 });
 
+describe('PowerViewHub single-shade response', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  // Build 827 answers GET /api/shades/{id} with the requested shade under `shade`
+  // AND dumps every OTHER shade into a non-empty `shadeData` array. We must read
+  // only `shade` and never pick a position out of that leaked list, or a
+  // single-shade read would carry the wrong shade's data. Observed live against a
+  // real Gen 1 hub (HunterDouglas PDBU Hub v1.01.827), 2026-10-25.
+  const leakyResponse = {
+    shade: { id: 26835, name: 'UmlnaHQ=', positions: { position1: 100, posKind1: 1 } },
+    shadeData: [
+      { id: 1342, name: 'RnJvbnQgTGVmdA==', positions: { position1: 65535, posKind1: 1 } },
+      { id: 61338, name: 'RnJvbnQgTWlkZGxl', positions: { position1: 0, posKind1: 1 } },
+    ],
+  };
+
+  it('returns only the requested shade on a cached read, ignoring the leaked shadeData', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(hubResponse(leakyResponse)));
+
+    const shade = await hub().getShade(26835);
+
+    expect(shade.id).toBe(26835);
+    expect(shade.positions?.position1).toBe(100);
+  });
+
+  it('returns only the requested shade on a refresh, ignoring the leaked shadeData', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(hubResponse(leakyResponse)));
+
+    const request = hub().getShade(26835, { refresh: true });
+    await vi.runAllTimersAsync();
+    const shade = await request;
+
+    expect(shade.id).toBe(26835);
+    expect(shade.positions?.position1).toBe(100);
+  });
+});
+
 describe('PowerViewHub request timeout', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
