@@ -9,7 +9,7 @@
 - **PowerView scenes appear as HomeKit switches**, so a group of shades moves together instead of one at a time.
 - **Your shades stay asleep overnight.** By default, no battery poll or asking shades at startup wakes the motors between 21:00 and 08:00.
 
-Homebridge 1.8+ and 2.x, Node.js 22 or 24. Generation 3 gateways are not supported.
+Homebridge 1.8+ and 2.x, Node.js 22, 24 or 26. Generation 3 gateways are not supported.
 
 **Tested on Gen 1 and Gen 2 hubs.** See [Tested on](#tested-on).
 
@@ -18,7 +18,7 @@ Homebridge 1.8+ and 2.x, Node.js 22 or 24. Generation 3 gateways are not support
 ## Requirements
 
 - [Homebridge](https://github.com/homebridge/homebridge) **1.8.0** or **2.0.0**
-- Node.js **22** or **24**
+- Node.js **22**, **24** or **26**
 
 ## Tested on
 
