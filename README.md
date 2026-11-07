@@ -27,7 +27,7 @@ Every release is unit tested. These real hubs and shades were used as well:
 | Hub | Firmware | Tested |
 |---|---|---|
 | Gen 1, PowerView Hub | build 827 | Releases up to 5.2.1. Stop: confirmed the hub ignores it, so it stays off |
-| Gen 2, PV Hub2.0 | build 1056, radio 2.0.2610 | 5.3.0: setup, positions, scene switches listed, moves, stop, Stop Shades |
+| Gen 2, PV Hub2.0 | build 1056, radio 2.0.2610 | 5.3.0: setup, positions, scene switches listed, moves, stop, Stop Shades. 5.4.0 pre-releases: Signal, hub light (kept through a power cut) |
 
 Shades: five standard bottom-up shades (capabilities 0) on shade firmware 1.5.1771 and 2.2.2754.
 Other shade types (vanes, top-down/bottom-up) are covered by unit tests only.
