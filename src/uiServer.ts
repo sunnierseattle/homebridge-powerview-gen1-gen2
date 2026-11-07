@@ -21,6 +21,7 @@ class PowerViewUiServer extends HomebridgePluginUiServer {
     this.route('/motion', (tools, payload) => tools.motion(payload));
     this.route('/scenes', (tools) => tools.scenes());
     this.route('/activateScene', (tools, payload) => tools.activateScene(payload));
+    this.route('/hubLight', async (tools, payload) => ({ light: await tools.setLight(payload) }));
     this.onRequest('/quietHoursOffTheOldWay', async () => ({ off: quietHoursOffTheOldWay(await this.savedConfig()) }));
     this.ready();
   }

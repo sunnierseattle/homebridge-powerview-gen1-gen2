@@ -1,7 +1,7 @@
 import type { Logging } from 'homebridge';
 
 import { HubErrorCode, HubError } from './errors.js';
-import { HubPosition, type PowerViewHub, type PowerViewShade } from './powerviewHub.js';
+import { HubPosition, type HubColor, type PowerViewHub, type PowerViewShade } from './powerviewHub.js';
 import {
   batteryStrengthToPercent,
   decodeBase64Name,
@@ -23,6 +23,28 @@ import { PLATFORM_NAME } from './settings.js';
  */
 
 export type ShadeMotion = 'jog' | 'calibrate';
+
+export interface ToolHubLight {
+  on: boolean;
+  brightness: number;
+}
+
+export type LightRequest = { on: false } | { on: true; brightness: number };
+
+/** Blue is what a primary hub shows out of the box. */
+const DEFAULT_LIGHT = { red: 0, green: 0, blue: 255 };
+
+/**
+ * The light as the page shows it. Off means every channel is 0: a Gen 2 hub
+ * keeps the light on at brightness 0 while any colour channel is set.
+ */
+export function toolHubLight(color: HubColor | undefined): ToolHubLight | undefined {
+  if (!color) {
+    return undefined;
+  }
+  const dark = !color.red && !color.green && !color.blue && !color.brightness;
+  return { on: !dark, brightness: color.brightness };
+}
 
 export interface ToolPosition {
   kind: HubPosition;
@@ -91,6 +113,19 @@ export function requireMotion(payload: unknown): ShadeMotion {
     throw new HubError(`Unsupported motion: ${String(motion)}`, HubErrorCode.BadRequest, 400);
   }
   return motion;
+}
+
+/** Off, or on at a whole brightness from 1 to 100, or a 400. */
+export function requireLight(payload: unknown): LightRequest {
+  const { on, brightness } = (payload ?? {}) as { on?: unknown; brightness?: unknown };
+  if (on === false) {
+    return { on: false };
+  }
+  if (on === true && typeof brightness === 'number' && Number.isInteger(brightness)
+    && brightness >= 1 && brightness <= 100) {
+    return { on: true, brightness };
+  }
+  throw new HubError('Hub light needs on: false, or on: true with brightness 1-100', HubErrorCode.BadRequest, 400);
 }
 
 /**
@@ -164,7 +199,7 @@ export class ShadeTools {
     private readonly log: Logging,
   ) {}
 
-  async hubInfo(): Promise<{ host: string; name: string; firmware?: string }> {
+  async hubInfo(): Promise<{ host: string; name: string; firmware?: string; light?: ToolHubLight }> {
     const userData = await this.hub.getUserData();
     const main = userData.firmware?.mainProcessor;
     return {
@@ -173,7 +208,31 @@ export class ShadeTools {
       firmware: main && typeof main.build === 'number'
         ? `${main.name ?? 'hub'} ${main.revision}.${main.subRevision}.${main.build}`
         : undefined,
+      light: toolHubLight(userData.color),
     };
+  }
+
+  /**
+   * Turns the hub's status light off, or on at a brightness. Turning it on
+   * keeps the hub's current colour, or uses blue when it was off.
+   */
+  async setLight(payload: unknown): Promise<ToolHubLight | undefined> {
+    const request = requireLight(payload);
+    let color: HubColor;
+    if (request.on) {
+      const current = (await this.hub.getUserData()).color;
+      const hue = current && (current.red || current.green || current.blue) ? current : DEFAULT_LIGHT;
+      color = { red: hue.red, green: hue.green, blue: hue.blue, brightness: request.brightness };
+    } else {
+      color = { red: 0, green: 0, blue: 0, brightness: 0 };
+    }
+    const stored = toolHubLight(await this.hub.setHubColor(color) ?? color);
+    if (request.on) {
+      this.log.info('hub light turned on at %s', `${request.brightness}%`);
+    } else {
+      this.log.info('hub light turned off');
+    }
+    return stored;
   }
 
   async shades(): Promise<ToolShade[]> {

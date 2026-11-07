@@ -117,11 +117,20 @@ export interface HubFirmware {
   };
 }
 
+/** The hub's status light. Channels run 0-255, brightness 0-100. */
+export interface HubColor {
+  red: number;
+  green: number;
+  blue: number;
+  brightness: number;
+}
+
 export interface HubUserData {
   hubName: string;
   serialNumber: string;
   rfStatus?: number;
   firmware?: HubFirmware;
+  color?: HubColor;
 }
 
 export interface HubResponse<T> {
@@ -572,6 +581,26 @@ export class PowerViewHub {
       throw new HubError('Hub returned no userData from /api/userdata', HubErrorCode.EmptyBody);
     }
     return json.userData;
+  }
+
+  /**
+   * Sets the hub's status light and returns what the hub stored.
+   *
+   * The vendor docs only list GET for /api/userdata. A Gen 2 hub on build 1056
+   * merges a PUT into its settings, so sending only `color` leaves the name,
+   * time zone and network settings alone, and keeps it across a power cut.
+   */
+  async setHubColor(color: HubColor): Promise<HubColor | undefined> {
+    const json = await this.fetchJson<{ userData?: HubUserData }>(
+      this.baseUrl('/api/userdata'),
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userData: { color } }),
+      },
+      RequestPriority.Write,
+    );
+    return json.userData?.color;
   }
 
   async getFirmwareVersion(): Promise<HubFirmware> {
