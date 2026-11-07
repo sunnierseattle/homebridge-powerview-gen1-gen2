@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [5.4.0] - 2026-11-07
 
 ### Added
 
@@ -36,6 +36,9 @@ All notable changes to this project are documented in this file.
 - Test files are now type-checked: `npm run typecheck` (`tsconfig.test.json`) runs in CI. Dev
   dependencies homebridge 2.5.0 and hap-nodejs 2.3.0 now share one hap-nodejs copy; two copies
   (homebridge pinned 2.2.2, tests imported 2.2.3) caused 83 of the 90 type errors in tests.
+- `minimatch` is forced to 11 through an npm override, clearing Dependabot alert #18 (dev only).
+- New tests pin that a single-shade read uses only `shade` and ignores the `shadeData` list of
+  every other shade that Gen 1 hub build 827 also returns.
 - Settings form rewritten for clarity. New sections: **Positions**, **Moving and stopping** (travel,
   slider wait, stop, Stop Shades, stop before changing course; three of these were in Advanced),
   Scenes, Battery, Advanced. Shorter descriptions and plainer titles: for example "Strict errors" is

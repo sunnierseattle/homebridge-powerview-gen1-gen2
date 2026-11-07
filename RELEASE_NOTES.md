@@ -38,7 +38,55 @@ User-facing notes for **homebridge-powerview-gen1-gen2** releases. Use this file
 
 ---
 
-## Latest: 5.3.0 (2026-11-03)
+## Latest: 5.4.0 (2026-11-07)
+
+### Highlights
+
+- **Settings rewritten in plain words** and regrouped into Positions, Moving and stopping,
+  Scenes, Battery and Advanced. Your existing config keeps working unchanged.
+- **Shade tools can check signal strength and control the hub's status light.**
+- **Quiet hours has an on/off checkbox.**
+
+### Added
+
+- **Signal** in Shade tools: checks a shade over radio and shows its strongest link in dBm, or
+  **No answer**. Takes about 6 seconds per shade, and the shade doesn't move. Works on Gen 2
+  hubs; Gen 1 hubs ignore it.
+- **Hub status light** in Shade tools: Off, On, or brightness 1–100%. On keeps the hub's current
+  colour, or blue if it was off. The setting survives a power cut. Hidden if your hub has no light.
+- **Quiet hours checkbox** (on by default). Clear it to turn quiet hours off. If you'd turned them
+  off the old way (same hour for From and Until), the box opens cleared, so saving keeps them off.
+
+### Changed
+
+- **Plainer setting names**, for example "Strict errors" → "Show hub errors", "Offer stop" →
+  "Add stop to HomeKit", "Hide these scenes" → "Hidden scenes". Stop, travel and the slider wait
+  moved out of Advanced into **Moving and stopping**.
+- **Add stop to HomeKit** is now Auto / On / Off. Dropdowns no longer show a stray "None" choice.
+- **Battery refresh time** is picked from an hourly dropdown instead of typed. A time with minutes
+  already in config.json still works and is kept when you save.
+- Number settings are plain fields instead of sliders.
+- **Shade tools:** Check is renamed **Position**; read-only buttons come before ones that move a
+  shade; Power is now **Battery** and shows Low only when the hub says so; a tidier, more compact
+  layout.
+
+### Fixed
+
+- **Hidden settings lost their values.** Turning off a feature (such as "Ask shades after a move",
+  the battery refresh, scenes or stop) and saving erased its related settings. They now always show
+  and keep their values.
+- Help text corrections: quiet hours lists every exception in the README, the travel tile is
+  described as an estimate, and a missing "Stop command" reference and a raw setting key are fixed.
+
+### Notes
+
+- No config changes needed: setting keys are the same, so existing configs load as before.
+- Signal and the hub light use hub endpoints that the vendor docs don't list. They were tested on a
+  Gen 2 hub (build 1056).
+
+---
+
+## 5.3.0 (2026-11-03)
 
 ### Highlights
 
