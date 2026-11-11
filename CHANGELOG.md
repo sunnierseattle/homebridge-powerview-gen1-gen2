@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [5.4.2] - 2026-11-11
+
 ### Fixed
 
 - **Ask shades on every HomeKit read** (`refreshShades`) no longer makes HomeKit wait for the shade.

@@ -38,7 +38,33 @@ User-facing notes for **homebridge-powerview-gen1-gen2** releases. Use this file
 
 ---
 
-## Latest: 5.4.1 (2026-11-11)
+## Latest: 5.4.2 (2026-11-11)
+
+### Highlights
+
+- **No more "slow to respond" warnings with "Ask shades on every HomeKit read" on.** The Home app
+  shows the last known position at once and updates when the shade answers.
+
+### Fixed
+
+- With **Ask shades on every HomeKit read** (`refreshShades`), the plugin waited for each shade to
+  answer over radio (about 4–5 seconds each, one shade at a time) before replying to HomeKit.
+  Homebridge logged "slow to respond" and "didn't respond at all", and the Home app could show
+  No Response. HomeKit now gets the last known position immediately and the shade's real position
+  a few seconds later.
+- A shade read while it's still moving is checked again shortly after, so the Home app ends on
+  its final position instead of a mid-move one.
+
+### Notes
+
+- No config changes needed. You may not need **Ask shades on every HomeKit read** at all: moves
+  made through HomeKit are re-checked by **Ask shades after a move**, and **Ask shades every
+  (minutes)** catches moves made with a remote. It mainly helps if you use a remote and want the
+  Home app to catch up on the next read.
+
+---
+
+## 5.4.1 (2026-11-11)
 
 ### Highlights
 
