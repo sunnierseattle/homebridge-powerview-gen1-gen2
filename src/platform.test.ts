@@ -442,6 +442,44 @@ describe('PowerViewPlatform.getPosition', () => {
     expect(rfReads(fetchMock)).toHaveLength(2);
   });
 
+  // Seen on a Gen 2 hub: a shade moved outside HomeKit was read over RF mid-travel
+  // (95% on its way to 50%). The hub kept 95% as its stored position, and the
+  // next read inside the 10 s pause got no RF, so HomeKit showed 95 for 104 s.
+  it('reads a shade again after a background RF read finds it moved', async () => {
+    const { platform, fetchMock } = await readyPlatform(config({ refreshShades: true }));
+    const travelling = { ...SHADE, positions: { posKind1: 1, position1: 62260 } }; // 95%
+    const settled = { ...SHADE, positions: { posKind1: 1, position1: 32767 } }; // 50%
+    let rf = 0;
+    fetchMock.mockImplementation(((url: string) => {
+      if (String(url).includes('refresh=true')) {
+        rf++;
+        const shade = rf === 1 ? travelling : settled;
+        return new Promise((resolve) => {
+          setTimeout(() => resolve(jsonResponse({ shade })), 4_000);
+        });
+      }
+      return Promise.resolve(jsonResponse({ shade: travelling }));
+    }) as never);
+
+    await platform.getPosition(1, 1, vi.fn());
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(platform.getCachedPosition(1, 1)).toBe(95);
+
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(rfReads(fetchMock)).toHaveLength(2);
+    expect(platform.getCachedPosition(1, 1)).toBe(50);
+  });
+
+  it('does not read a shade again when the background RF read matches the cache', async () => {
+    const { platform, fetchMock } = await readyPlatform(config({ refreshShades: true }));
+    slowRf(fetchMock, []);
+
+    await platform.getPosition(1, 1, vi.fn());
+    await vi.advanceTimersByTimeAsync(45_000);
+
+    expect(rfReads(fetchMock)).toHaveLength(1);
+  });
+
   it('keeps blocking reads under strictErrors', async () => {
     const { platform, fetchMock } = await readyPlatform(config({ strictErrors: true }));
 

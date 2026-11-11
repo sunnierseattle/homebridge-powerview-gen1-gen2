@@ -13,6 +13,9 @@ All notable changes to this project are documented in this file.
   afterwards; the answer reaches HomeKit as an update. A shade with nothing cached is answered from
   the hub's stored position, not RF. A shade read over RF in the last 10 s (by any check) isn't
   woken again. `strictErrors` keeps the waiting behaviour.
+- With `refreshShades`, a shade whose RF read shows it moved is read once more after
+  `verifyDelayMs`. A shade moved outside HomeKit can be read mid-travel, and the hub then stores
+  that mid-travel position; on a Gen 2 hub HomeKit showed 95% for 104 s for a shade at 50%.
 
 ## [5.4.1] - 2026-11-11
 

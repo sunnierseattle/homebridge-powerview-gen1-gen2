@@ -1047,7 +1047,13 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     void (async () => {
       try {
         this.log.debug('background refresh %d/%d (rf=%s)', shadeId, position, refresh);
+        const before = refresh && this.refreshShades
+          ? { ...this.lastPositions.get(shadeId) }
+          : undefined;
         await this.updatePosition(shadeId, position, refresh);
+        if (before && !positionMapsEqual(before, this.lastPositions.get(shadeId) ?? {})) {
+          this.scheduleFollowUpRead(shadeId);
+        }
       } catch (err) {
         logError(this.log, `Background refresh failed for shade ${shadeId}:`, err);
       } finally {
@@ -1424,6 +1430,27 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     this.verifyTimers.set(shadeId, setTimeout(() => {
       this.verifyTimers.delete(shadeId);
       void this.verifyShade(shadeId);
+    }, this.verifyDelayMs));
+  }
+
+  /**
+   * Reads a shade over RF once more, verifyDelayMs after a refreshShades read
+   * found it somewhere new. A shade moved outside HomeKit (remote, PowerView
+   * app, hub) can be caught mid-travel, and the hub then keeps that mid-travel
+   * value as its stored position, so nothing else corrects it until the next
+   * RF read. Shares verifyTimers with scheduleVerify, so a pending after-move
+   * check covers it, and stop and shutdown clear it. Not gated on
+   * verifyAfterMove: refreshShades already opts into waking the motor.
+   */
+  private scheduleFollowUpRead(shadeId: number): void {
+    if (this.shuttingDown || this.verifyTimers.has(shadeId)) {
+      return;
+    }
+    this.verifyTimers.set(shadeId, setTimeout(() => {
+      this.verifyTimers.delete(shadeId);
+      if (!this.shuttingDown) {
+        void this.queueRfCheck(shadeId, 'Asking shades after a change', true);
+      }
     }, this.verifyDelayMs));
   }
 
