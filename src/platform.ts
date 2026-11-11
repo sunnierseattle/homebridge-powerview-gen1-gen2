@@ -181,6 +181,12 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
   private readonly pendingRefresh = new Set<number>();
   /** When each shade last had a background read, so bursts don't stack up. */
   private readonly lastBackgroundRefresh = new Map<number, number>();
+  /**
+   * When each shade last answered an RF read of any kind (background, sweep,
+   * verify, startup), so refreshShades doesn't wake the motor again for a
+   * position that was read seconds ago.
+   */
+  private readonly lastRfRead = new Map<number, number>();
   /** Pending post-move verifies, one per shade, so a burst of moves costs one read. */
   private readonly verifyTimers = new Map<number, ReturnType<typeof setTimeout>>();
   /** Slider values waiting out the debounce, per shade/position. */
@@ -928,6 +934,9 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     refresh = false,
   ): Promise<{ positions: PositionMap | null; timedOut?: boolean }> {
     const shade = await this.hub.getShade(shadeId, { refresh });
+    if (refresh) {
+      this.lastRfRead.set(shadeId, Date.now());
+    }
     const handler = this.handlers.get(shadeId);
     const positions = handler?.updateShadeValues(shade) ?? null;
     this.cachePositions(shadeId, positions);
@@ -945,23 +954,38 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     // is a serialised round-trip, and HomeKit reads every characteristic of
     // every shade at once — the later ones then exceed its read budget and log
     // "read handler was slow to respond". The cache survives restarts, so it is
-    // warm from the first read. refreshShades and strictErrors both opt into
-    // hitting the hub, so they keep the blocking path.
-    if (!this.refreshShades && !this.strictErrors) {
+    // warm from the first read. strictErrors opts into surfacing hub failures,
+    // so it keeps the blocking path.
+    //
+    // refreshShades answers from cache too and asks the shade over RF behind the
+    // answer; the result reaches HomeKit as an update when the shade replies.
+    // Awaiting the RF read (~5 s per shade on Gen 1, serialised) left later
+    // shades in a burst with "didn't respond at all" — No Response in the Home
+    // app (#37).
+    const rfInBackground = this.refreshShades && !this.strictErrors;
+    if (!this.strictErrors) {
       const cached = this.getCachedPosition(shadeId, position);
       if (cached != null) {
         // Answer first. scheduleBackgroundRefresh runs synchronously up to its
         // first await, so scheduling ahead of the callback puts a fetch on the
         // stack before HomeKit has its value.
         callback(null, cached);
-        this.scheduleBackgroundRefresh(shadeId, position);
+        this.scheduleBackgroundRefresh(shadeId, position, rfInBackground);
         return;
       }
     }
 
+    // Only strictErrors waits on RF here. Everyone else answers a cold cache
+    // from the hub's stored position, which is a LAN round-trip, not a wake.
+    const blockingRf = this.refreshShades && this.strictErrors;
     try {
-      const value = await this.updatePosition(shadeId, position, this.refreshShades);
-      if (!this.refreshShades && value == null) {
+      const value = await this.updatePosition(shadeId, position, blockingRf);
+      if (!blockingRf && value != null && rfInBackground) {
+        callback(null, this.resolvePositionValue(shadeId, position, value));
+        this.scheduleBackgroundRefresh(shadeId, position, true);
+        return;
+      }
+      if (!blockingRf && value == null) {
         if (this.strictErrors) {
           // Strict mode opts into surfacing hub failures, so keep the blocking refresh.
           this.log.debug('refresh %d/%d', shadeId, position);
@@ -1009,6 +1033,12 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
 
     const last = this.lastBackgroundRefresh.get(shadeId) ?? 0;
     if (!refresh && Date.now() - last < BACKGROUND_REFRESH_INTERVAL_MS) {
+      return;
+    }
+    // An RF read seconds ago already refreshed the cache; waking the motor again
+    // costs battery for nothing new.
+    const lastRf = this.lastRfRead.get(shadeId) ?? 0;
+    if (refresh && Date.now() - lastRf < BACKGROUND_REFRESH_INTERVAL_MS) {
       return;
     }
 

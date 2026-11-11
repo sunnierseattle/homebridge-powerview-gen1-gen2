@@ -28,7 +28,7 @@
         "title": "Ask shades on every HomeKit read",
         "type": "boolean",
         "default": false,
-        "description": "Ask shades, not the hub, each time the Home app shows a position. This wakes the motor every time, even in quiet hours."
+        "description": "Ask shades, not the hub, each time the Home app shows a position. The Home app shows the last known position at once and updates when the shade answers. This wakes the motor (at most every 10 seconds per shade), even in quiet hours."
       },
       "pollShadesForUpdate": {
         "title": "Ask hub every 30 seconds",

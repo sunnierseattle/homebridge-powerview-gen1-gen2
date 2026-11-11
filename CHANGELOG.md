@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Ask shades on every HomeKit read** (`refreshShades`) no longer makes HomeKit wait for the shade.
+  It awaited an RF read (about 5 s per shade on Gen 1, one at a time) before answering, so Homebridge
+  logged "read handler … slow to respond" / "didn't respond at all" and later shades in a burst
+  showed No Response (#37). It now answers from the last known position and asks the shade
+  afterwards; the answer reaches HomeKit as an update. A shade with nothing cached is answered from
+  the hub's stored position, not RF. A shade read over RF in the last 10 s (by any check) isn't
+  woken again. `strictErrors` keeps the waiting behaviour.
+
 ## [5.4.1] - 2026-11-11
 
 ### Changed
