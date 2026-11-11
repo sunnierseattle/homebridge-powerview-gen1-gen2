@@ -186,6 +186,25 @@ describe('PowerViewPlatform.updateShades', () => {
 
     expect(shadeUrls(fetchMock)).toHaveLength(1);
   });
+
+  // pollShadesForUpdate refreshes the list every 30 seconds. At info level this
+  // line was ~94% of a two-week Homebridge log and pushed everything else out
+  // of the size-capped file.
+  it('logs the per-shade refresh line at debug, not info', async () => {
+    stubHub([
+      { id: 1, name: 'U2hhZGU=', type: 23, positions: { posKind1: 1, position1: 49151 } },
+    ]);
+    const platform = new PowerViewPlatform(harness.log, config(), harness.api);
+
+    for (let i = 0; i < 2; i++) {
+      const done = platform.updateShades();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await done;
+    }
+
+    expect(harness.log.info).not.toHaveBeenCalledWith('Updating shade %d: %s', 1, expect.anything());
+    expect(harness.log.debug).toHaveBeenCalledWith('Updating shade %d: %s', 1, expect.anything());
+  });
 });
 
 describe('PowerViewPlatform accessory removal', () => {

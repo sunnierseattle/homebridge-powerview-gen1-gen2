@@ -556,7 +556,9 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     shade: PowerViewShade,
     accessory: PlatformAccessory<ShadeContext>,
   ): PlatformAccessory<ShadeContext> {
-    this.log.info('Updating shade %d: %s', shade.id, accessory.displayName);
+    // Debug, not info: this runs for every shade on every list refresh, so with
+    // pollShadesForUpdate it floods the size-capped Homebridge log.
+    this.log.debug('Updating shade %d: %s', shade.id, accessory.displayName);
 
     const newType = this.shadeType(shade);
     const handler = this.handlers.get(shade.id);
