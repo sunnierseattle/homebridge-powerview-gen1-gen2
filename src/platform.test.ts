@@ -480,6 +480,20 @@ describe('PowerViewPlatform.getPosition', () => {
     expect(rfReads(fetchMock)).toHaveLength(1);
   });
 
+  it('still waits for the RF read when strictErrors is on with refreshShades', async () => {
+    const { platform, fetchMock } = await readyPlatform(config({ refreshShades: true, strictErrors: true }));
+    const order: string[] = [];
+    slowRf(fetchMock, order);
+
+    const done = platform.getPosition(1, 1, (err, value) => {
+      order.push(`callback:${String(value)}`);
+    });
+    await vi.advanceTimersByTimeAsync(6_000);
+    await done;
+
+    expect(order).toEqual(['rf', 'callback:75']);
+  });
+
   it('keeps blocking reads under strictErrors', async () => {
     const { platform, fetchMock } = await readyPlatform(config({ strictErrors: true }));
 

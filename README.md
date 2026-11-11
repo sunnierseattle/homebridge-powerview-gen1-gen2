@@ -77,7 +77,7 @@ The hub is contacted at `powerview-hub.local` by default.
 | `verifyAfterMove` | Ask shades after a move where each one ended up, to catch a motor that stopped short. Wakes the motor, even during quiet hours | `false` |
 | `verifyDelayMs` | Wait this long after the last command before asking (5000 to 300000) | `30000` |
 | `healSweepGapMs` | Pause after each shade when asking shades on schedule or after a move | `4000` |
-| `refreshShades` | Ask shades instead of hub on every HomeKit read. HomeKit gets the last known position at once and the shade's answer as an update. Wakes a motor at most every 10 seconds per shade, even during quiet hours | `false` |
+| `refreshShades` | Ask shades instead of hub on every HomeKit read. HomeKit gets the last known position at once and the shade's answer as an update. Wakes the motor even during quiet hours; HomeKit reads wake each shade at most every 10 seconds | `false` |
 | `quietHours` | Hours when the plugin won't ask shades at startup or on schedule, so an unattended restart cannot wake shades overnight. Still allowed: asking after a move, asking on every HomeKit read, the battery poll, checks after a stop, Shade tools checks, and reads of a shade with no known position. Set `enabled` to `false` (the form's Quiet hours checkbox) to turn it off | `21:00`–`08:00`, on |
 | `reportTravel` | Show opening/closing and an estimated position while a shade moves, instead of the target at once | `false` |
 | `setPositionDebounceMs` | Wait this long after the last slider value before moving the shade, so a drag sends one move (max 5000). Every command waits, including taps, Siri and automations. `1500` is a good start | `0` |

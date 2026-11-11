@@ -1439,7 +1439,8 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
    * app, hub) can be caught mid-travel, and the hub then keeps that mid-travel
    * value as its stored position, so nothing else corrects it until the next
    * RF read. Shares verifyTimers with scheduleVerify, so a pending after-move
-   * check covers it, and stop and shutdown clear it. Not gated on
+   * check covers it. Stop clears it only while it is still a timer; once queued
+   * it reads the stopped shade, which is harmless. Shutdown drops it. Not gated on
    * verifyAfterMove: refreshShades already opts into waking the motor.
    */
   private scheduleFollowUpRead(shadeId: number): void {
