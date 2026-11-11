@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [5.4.1] - 2026-11-11
+
 ### Changed
 
 - Node.js 26 is supported (`engines`: `^22.12.0 || ^24.0.0 || ^26.0.0`), and CI tests on 22, 24 and
