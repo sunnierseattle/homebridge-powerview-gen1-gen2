@@ -361,6 +361,139 @@ describe('PowerViewPlatform.getPosition', () => {
     expect(callback).toHaveBeenCalledTimes(1);
   });
 
+  /**
+   * Answers the plain read at once and holds every refresh=true read for 5 s,
+   * which is about what a Gen 1 hub takes to wake a motor over RF (#37).
+   */
+  function slowRf(fetchMock: ReturnType<typeof stubHub>, order: string[], shade = SHADE) {
+    fetchMock.mockImplementation(((url: string) => {
+      if (String(url).includes('refresh=true')) {
+        order.push('rf');
+        return new Promise((resolve) => {
+          setTimeout(() => resolve(jsonResponse({ shade })), 5_000);
+        });
+      }
+      order.push('hub');
+      return Promise.resolve(jsonResponse({ shade }));
+    }) as never);
+  }
+
+  function rfReads(fetchMock: ReturnType<typeof stubHub>): string[] {
+    return fetchMock.mock.calls
+      .map((c) => String(c[0]))
+      .filter((url) => url.includes('refresh=true'));
+  }
+
+  // #37: refreshShades awaited a ~5 s RF read before answering, so HomeKit's
+  // 3 s / 9 s read budget ran out and later shades in a burst showed No Response.
+  it('answers a warm cache at once under refreshShades and asks the shade afterwards', async () => {
+    const { platform, fetchMock } = await readyPlatform(config({ refreshShades: true }));
+    const order: string[] = [];
+    slowRf(fetchMock, order);
+
+    await platform.getPosition(1, 1, (err, value) => {
+      order.push(`callback:${String(value)}`);
+    });
+    await vi.advanceTimersByTimeAsync(6_000);
+
+    expect(order[0]).toBe('callback:75');
+    expect(rfReads(fetchMock)).toHaveLength(1);
+  });
+
+  it('answers a cold cache from the hub, not RF, under refreshShades', async () => {
+    const UNREAD = { id: 2, name: 'U2hhZGU=', type: 1 };
+    const fetchMock = stubHub([UNREAD]);
+    const platform = new PowerViewPlatform(harness.log, config({ refreshShades: true }), harness.api);
+    const listed = platform.updateShades();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await listed;
+    fetchMock.mockClear();
+
+    const order: string[] = [];
+    slowRf(fetchMock, order, { ...UNREAD, positions: { posKind1: 1, position1: 32767 } });
+    const callback = vi.fn((_err: unknown, value: unknown) => {
+      order.push(`callback:${String(value)}`);
+    });
+
+    const done = platform.getPosition(2, 1, callback);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // Answered from the hub's stored position well inside HomeKit's budget,
+    // with the RF read still in flight behind it.
+    expect(callback).toHaveBeenCalledWith(null, 50);
+    expect(order.indexOf('callback:50')).toBeLessThan(order.indexOf('rf'));
+    await vi.advanceTimersByTimeAsync(5_000);
+    await done;
+  });
+
+  it('wakes a shade over RF at most once per 10 s under refreshShades', async () => {
+    const { platform, fetchMock } = await readyPlatform(config({ refreshShades: true }));
+    slowRf(fetchMock, []);
+
+    await platform.getPosition(1, 1, vi.fn());
+    await vi.advanceTimersByTimeAsync(6_000); // first RF read done
+    await platform.getPosition(1, 1, vi.fn());
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(rfReads(fetchMock)).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await platform.getPosition(1, 1, vi.fn());
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(rfReads(fetchMock)).toHaveLength(2);
+  });
+
+  // Seen on a Gen 2 hub: a shade moved outside HomeKit was read over RF mid-travel
+  // (95% on its way to 50%). The hub kept 95% as its stored position, and the
+  // next read inside the 10 s pause got no RF, so HomeKit showed 95 for 104 s.
+  it('reads a shade again after a background RF read finds it moved', async () => {
+    const { platform, fetchMock } = await readyPlatform(config({ refreshShades: true }));
+    const travelling = { ...SHADE, positions: { posKind1: 1, position1: 62260 } }; // 95%
+    const settled = { ...SHADE, positions: { posKind1: 1, position1: 32767 } }; // 50%
+    let rf = 0;
+    fetchMock.mockImplementation(((url: string) => {
+      if (String(url).includes('refresh=true')) {
+        rf++;
+        const shade = rf === 1 ? travelling : settled;
+        return new Promise((resolve) => {
+          setTimeout(() => resolve(jsonResponse({ shade })), 4_000);
+        });
+      }
+      return Promise.resolve(jsonResponse({ shade: travelling }));
+    }) as never);
+
+    await platform.getPosition(1, 1, vi.fn());
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(platform.getCachedPosition(1, 1)).toBe(95);
+
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(rfReads(fetchMock)).toHaveLength(2);
+    expect(platform.getCachedPosition(1, 1)).toBe(50);
+  });
+
+  it('does not read a shade again when the background RF read matches the cache', async () => {
+    const { platform, fetchMock } = await readyPlatform(config({ refreshShades: true }));
+    slowRf(fetchMock, []);
+
+    await platform.getPosition(1, 1, vi.fn());
+    await vi.advanceTimersByTimeAsync(45_000);
+
+    expect(rfReads(fetchMock)).toHaveLength(1);
+  });
+
+  it('still waits for the RF read when strictErrors is on with refreshShades', async () => {
+    const { platform, fetchMock } = await readyPlatform(config({ refreshShades: true, strictErrors: true }));
+    const order: string[] = [];
+    slowRf(fetchMock, order);
+
+    const done = platform.getPosition(1, 1, (err, value) => {
+      order.push(`callback:${String(value)}`);
+    });
+    await vi.advanceTimersByTimeAsync(6_000);
+    await done;
+
+    expect(order).toEqual(['rf', 'callback:75']);
+  });
+
   it('keeps blocking reads under strictErrors', async () => {
     const { platform, fetchMock } = await readyPlatform(config({ strictErrors: true }));
 
