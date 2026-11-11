@@ -8,6 +8,8 @@ All notable changes to this project are documented in this file.
 
 - Node.js 26 is supported (`engines`: `^22.12.0 || ^24.0.0 || ^26.0.0`), and CI tests on 22, 24 and
   26. New Homebridge installs now come with Node.js 26.
+- "Updating shade N: name" is logged at debug, not info. It ran for every shade on every shade-list
+  refresh, so with **Ask hub every 30 seconds** on it filled the Homebridge log.
 
 ## [5.4.0] - 2026-11-07
 
