@@ -38,7 +38,28 @@ User-facing notes for **homebridge-powerview-gen1-gen2** releases. Use this file
 
 ---
 
-## Latest: 5.4.0 (2026-11-07)
+## Latest: 5.4.1 (2026-11-11)
+
+### Highlights
+
+- **Quieter Homebridge log.** With "Ask hub every 30 seconds" on, the plugin no longer writes a
+  line for every shade on every check.
+- **Node.js 26 is supported.**
+
+### Changed
+
+- "Updating shade N: name" is now a debug message. It was logged for every shade every 30 seconds
+  and could make up nearly all of the Homebridge log, pushing older entries out. Turn on debug
+  logging if you want to see it.
+- Node.js 26 is supported alongside 22 and 24.
+
+### Notes
+
+- No config changes needed.
+
+---
+
+## 5.4.0 (2026-11-07)
 
 ### Highlights
 
