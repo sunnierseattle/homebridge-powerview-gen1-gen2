@@ -5,6 +5,7 @@ import {
   POSITION_KIND_ERROR,
   decodeBase64Name,
   formatShadeFirmware,
+  formatShadeLabel,
   isLowBattery,
   isSceneExcluded,
   isWithinQuietHours,
@@ -606,5 +607,20 @@ describe('positionsSettled', () => {
     expect(positionsSettled(undefined, { posKind1: 1, position1: 0 }, 655)).toBe(false);
     expect(positionsSettled({ posKind1: 1 }, { posKind1: 1 }, 655)).toBe(false);
     expect(positionsSettled({ posKind1: 1, position1: 0 }, { posKind1: 1, position2: 0 }, 655)).toBe(false);
+  });
+});
+
+describe('formatShadeLabel', () => {
+  it('puts the name after the hub id', () => {
+    expect(formatShadeLabel(8517, 'Transom North')).toBe('8517 (Transom North)');
+    expect(formatShadeLabel(8517, '  Transom North ')).toBe('8517 (Transom North)');
+  });
+
+  it('gives the id alone when no real name is known', () => {
+    expect(formatShadeLabel(8517)).toBe('8517');
+    expect(formatShadeLabel(8517, '')).toBe('8517');
+    expect(formatShadeLabel(8517, '   ')).toBe('8517');
+    // The placeholder for a shade the hub sent no name for only repeats the id.
+    expect(formatShadeLabel(8517, 'Shade 8517')).toBe('8517');
   });
 });

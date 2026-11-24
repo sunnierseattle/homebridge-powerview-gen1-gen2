@@ -115,6 +115,19 @@ export function decodeBase64Name(encoded: string | undefined, fallback: string):
   return clean.length > 0 ? clean : fallback;
 }
 
+/**
+ * How log lines name a shade: its hub ID, then its name, as `8517 (Transom North)`.
+ * The ID alone when no name is known, or when the name is only the `Shade <id>`
+ * placeholder given to a shade the hub sent no name for.
+ */
+export function formatShadeLabel(id: number, name?: string): string {
+  const clean = name?.trim();
+  if (!clean || clean === `Shade ${id}`) {
+    return String(id);
+  }
+  return `${id} (${clean})`;
+}
+
 /** A shade's reported positions, keyed by position kind. */
 export type PositionMap = Partial<Record<HubPosition, number>>;
 

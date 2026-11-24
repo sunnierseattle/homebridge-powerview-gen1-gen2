@@ -177,6 +177,21 @@ describe('PowerViewPlatform.updateShades', () => {
     expect(platform.shadeLabel(99)).toBe('99');
   });
 
+  it('names a new shade from the hub list before it has an accessory', async () => {
+    // Type 999 is undocumented, so the type warning fires while the accessory
+    // is being created, before accessories has the shade.
+    stubHub([{ id: 1, name: 'U2hhZGU=', type: 999, positions: { posKind1: 1, position1: 0 } }]);
+    const platform = new PowerViewPlatform(harness.log, config(), harness.api);
+
+    const done = platform.updateShades();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await done;
+
+    expect(harness.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Shade %s has undocumented type %s'), '1 (Shade)', '999',
+    );
+  });
+
   it('does not refetch a shade the list already reported positions for', async () => {
     const fetchMock = stubHub([
       { id: 1, name: 'U2hhZGU=', type: 23, positions: { posKind1: 1, position1: 49151 } },
@@ -774,7 +789,7 @@ describe('PowerViewPlatform scenes', () => {
         }));
       }
       if (u.includes('sceneId=')) {
-        return Promise.resolve(jsonResponse({}));
+        return Promise.resolve(jsonResponse({ scene: { shadeIds: [1] } }));
       }
       if (u.includes('/api/scenes')) {
         return Promise.resolve(jsonResponse({ sceneIds: [7], sceneData: [{ id: 7, name: 'Q2xvc2Vk' }] }));
@@ -810,6 +825,7 @@ describe('PowerViewPlatform scenes', () => {
 
     // 32768 of 65535 is 50%.
     expect(service?.getCharacteristic(Characteristic.CurrentPosition).value).toBe(50);
+    expect(harness.log.info).toHaveBeenCalledWith('Scene %s activated (%d shade(s)%s)', '7 (Closed)', 1, ': 1 (Shade)');
   });
 
   it('leaves scenes listed in excludeScenes out of HomeKit', async () => {

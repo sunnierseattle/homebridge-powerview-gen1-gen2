@@ -6,6 +6,7 @@ import {
   batteryStrengthToPercent,
   decodeBase64Name,
   formatShadeFirmware,
+  formatShadeLabel,
   parsePositionMap,
   resolveHubHost,
   resolveQuietHours,
@@ -305,7 +306,9 @@ export class ShadeTools {
     const id = requireId(payload);
     const shadeIds = (await this.hub.activateScene(id)) ?? [];
     this.log.info('scene %d (%s) activated, moving shades %s',
-      id, this.sceneNames.get(id) ?? 'unknown name', shadeIds.length ? shadeIds.join(', ') : 'none reported');
+      id,
+      this.sceneNames.get(id) ?? 'unknown name',
+      shadeIds.length ? shadeIds.map((s) => formatShadeLabel(s, this.names.get(s))).join(', ') : 'none reported');
     return { shadeIds };
   }
 }

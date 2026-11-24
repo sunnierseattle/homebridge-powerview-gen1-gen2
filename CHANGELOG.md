@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Log lines about one shade name it next to its hub ID, as `8517 (Transom North)`, at every level:
+  moves (`setPosition 8517 (Transom North)/1 = 100`), stops, reported positions, RF checks, and
+  every warning and error that printed only the ID. The name comes from the accessory, or from the
+  hub's shade list for a shade not yet added; a shade with no name shows the ID alone. Scene
+  activation lines name the scene and each shade it moved. Lines that already printed the name
+  are unchanged.
+- `logError` passes its message as an argument, not as the format string, so a name containing `%`
+  can't garble the line.
+
 ## [5.4.2] - 2026-11-11
 
 ### Fixed

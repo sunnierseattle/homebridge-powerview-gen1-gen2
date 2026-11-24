@@ -31,6 +31,11 @@ export class PowerViewPlatformAccessory {
     this.updateAccessoryInformation();
   }
 
+  /** `8517 (Transom North)`: how log lines name this shade. */
+  private get label(): string {
+    return this.platform.shadeLabel(this.shadeId);
+  }
+
   private get Service() {
     return this.platform.Service;
   }
@@ -456,7 +461,7 @@ export class PowerViewPlatformAccessory {
     const serialised = JSON.stringify(shade.positions);
     if (serialised !== this.lastLoggedPositions) {
       this.lastLoggedPositions = serialised;
-      this.log.info('Shade %s reported positions %s', this.platform.shadeLabel(shade.id), serialised);
+      this.log.info('Shade %s reported positions %s', this.label, serialised);
     }
 
     // Bounded rather than stopping at the first gap: the old loop broke on a
@@ -483,8 +488,8 @@ export class PowerViewPlatformAccessory {
         // A NaN here would reach the position map, where it defeats
         // positionMapsEqual (NaN !== NaN) and rewrites the cache on every read.
         this.log.warn(
-          'Shade %d reported position kind %d with no usable value (%s)',
-          shade.id, position, String(hubValue),
+          'Shade %s reported position kind %d with no usable value (%s)',
+          this.label, position, String(hubValue),
         );
         continue;
       }
@@ -493,17 +498,17 @@ export class PowerViewPlatformAccessory {
         positions[HubPosition.BOTTOM] = Math.round(100 * hubValue / 65535);
         const service = this.resolveWindowCoveringService(SUBTYPE.BOTTOM);
         if (!service) {
-          this.log.warn('No bottom Window Covering service for shade %s', this.platform.shadeLabel(shade.id));
+          this.log.warn('No bottom Window Covering service for shade %s', this.label);
           continue;
         }
 
         if (!Number.isNaN(positions[HubPosition.BOTTOM])) {
           if (current) {
-            this.log.info('Setting position to:', positions[HubPosition.BOTTOM]);
+            this.log.info('Shade %s: setting position to %d', this.label, positions[HubPosition.BOTTOM]);
           }
           this.applyCoveringPosition(service, positions[HubPosition.BOTTOM]!);
         } else {
-          this.log.warn('Invalid position value:', positions[HubPosition.BOTTOM]);
+          this.log.warn('Shade %s: invalid position value %s', this.label, String(positions[HubPosition.BOTTOM]));
         }
 
         if (this.shadeType === ShadeKind.HORIZONTAL && current) {
