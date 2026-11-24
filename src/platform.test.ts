@@ -163,6 +163,45 @@ describe('PowerViewPlatform.updateShades', () => {
       .filter((url) => /\/api\/shades\/\d+/.test(url));
   }
 
+  it('logs one warning without a stack when the hub is in maintenance', async () => {
+    // The hub's nightly maintenance: HTTP 423 on every try, then connections dropped.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 423 }))
+      .mockResolvedValueOnce(new Response('', { status: 423 }))
+      .mockResolvedValueOnce(new Response('', { status: 423 }))
+      .mockRejectedValue(new TypeError('fetch failed'));
+    vi.stubGlobal('fetch', fetchMock);
+    const platform = new PowerViewPlatform(harness.log, config(), harness.api);
+
+    for (let i = 0; i < 2; i++) {
+      const done = platform.updateShades();
+      await vi.advanceTimersByTimeAsync(60_000);
+      await done;
+    }
+
+    expect(harness.log.error).not.toHaveBeenCalled();
+    const warnings = (harness.log.warn as unknown as { mock: { calls: unknown[][] } }).mock.calls
+      .filter((c) => c[1] === 'Failed to list shades from hub:');
+    expect(warnings).toHaveLength(2);
+    for (const [format, , detail] of warnings) {
+      expect(format).toBe('%s %s');
+      expect(String(detail)).not.toMatch(/\n\s+at /);
+    }
+    expect(String(warnings[0][2])).toMatch(/busy or in maintenance/);
+    expect(String(warnings[1][2])).toMatch(/fetch failed/);
+  });
+
+  it('keeps the stack for an unexpected error listing shades', async () => {
+    const platform = new PowerViewPlatform(harness.log, config(), harness.api);
+    const hub = (platform as unknown as { hub: { getShades: () => Promise<unknown> } }).hub;
+    hub.getShades = () => Promise.reject(new RangeError('boom'));
+
+    await platform.updateShades();
+
+    expect(harness.log.warn).not.toHaveBeenCalledWith('%s %s', 'Failed to list shades from hub:', expect.anything());
+    expect(harness.log.error).toHaveBeenCalledWith('Failed to list shades from hub:', expect.stringMatching(/RangeError: boom\n\s+at /));
+  });
+
   it('does not refetch a shade the list already reported positions for', async () => {
     const fetchMock = stubHub([
       { id: 1, name: 'U2hhZGU=', type: 23, positions: { posKind1: 1, position1: 49151 } },

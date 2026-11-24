@@ -593,7 +593,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     try {
       shadeData = await this.hub.getShades();
     } catch (err) {
-      logError(this.log, 'Failed to list shades from hub:', err);
+      this.logPollError('Failed to list shades from hub:', err);
       return;
     }
 
@@ -632,7 +632,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
               const shadeState = await this.hub.getShade(shade.id);
               handler.updateShadeValues(shadeState);
             } catch (err) {
-              logError(this.log, `Failed to fetch shade ${shade.id} state:`, err);
+              this.logPollError(`Failed to fetch shade ${shade.id} state:`, err);
             }
           }
         }
@@ -673,6 +673,21 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       this.missingFromList.delete(id);
       this.removeShadeAccessory(accessory);
     }
+  }
+
+  /**
+   * Logs a failed shade-list poll. A hub error gets one warning line without a
+   * stack: the hub runs maintenance around 00:30 and 01:00, answering HTTP 423
+   * and then dropping connections for about a minute, and the next poll
+   * recovers on its own. The stack says nothing about that; it only filled the
+   * log twice a night. Anything else is unexpected and keeps its stack.
+   */
+  private logPollError(message: string, err: unknown): void {
+    if (isHubError(err)) {
+      this.log.warn('%s %s', message, err.message);
+      return;
+    }
+    logError(this.log, message, err);
   }
 
   private pollShades(): void {
