@@ -38,7 +38,28 @@ User-facing notes for **homebridge-powerview-gen1-gen2** releases. Use this file
 
 ---
 
-## Latest: 5.4.2 (2026-11-11)
+## Latest: 5.4.3 (2026-11-24)
+
+### Highlights
+
+- **A quieter log during the hub's nightly maintenance.** No more stack traces or repeated
+  "Hub busy" warnings around 00:30 and 01:00.
+
+### Changed
+
+- When the hub can't be reached during a shade poll, the log shows one warning line instead of an
+  error with a full stack trace. The hub runs maintenance around 00:30 and 01:00, answering
+  "busy" and then dropping connections for about a minute; the next poll recovers on its own.
+- "Hub busy (HTTP 423), retrying…" is now a debug message. A request that still fails after
+  retrying is logged as before.
+
+### Notes
+
+- No config changes needed. Unexpected errors still log in full.
+
+---
+
+## 5.4.2 (2026-11-11)
 
 ### Highlights
 
