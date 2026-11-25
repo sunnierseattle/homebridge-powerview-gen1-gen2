@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [5.4.3] - 2026-11-24
+
 ### Changed
 
 - A hub error while polling the shade list (`Failed to list shades from hub:`, `Failed to fetch shade N
