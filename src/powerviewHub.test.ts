@@ -44,6 +44,33 @@ describe('PowerViewHub.requestJson', () => {
     vi.useRealTimers();
   });
 
+  it('logs a 423 retry at debug, not as a warning', async () => {
+    // The hub answers 423 throughout its nightly maintenance; a retry that
+    // usually succeeds is not worth a warning. A failure after the last retry
+    // still reaches the caller, which logs it.
+    vi.useFakeTimers();
+    vi.mocked(log.warn).mockClear();
+    vi.mocked(log.debug).mockClear();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(hubResponse({}, 423))
+      .mockResolvedValueOnce(hubResponse({ sceneIds: [], sceneData: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const request = hub().requestJson('http://127.0.0.1/api/scenes');
+    await vi.runAllTimersAsync();
+    await request;
+
+    expect(log.warn).not.toHaveBeenCalled();
+    expect(log.debug).toHaveBeenCalledWith(
+      expect.stringContaining('HTTP 423'),
+      expect.anything(),
+      1,
+      expect.anything(),
+    );
+    vi.useRealTimers();
+  });
+
   it('maps HTTP 404 to NotFound', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(hubResponse(({}), 404, '')));
 
