@@ -179,6 +179,32 @@ describe('PowerViewPlatform.updateShades', () => {
     expect(platform.shadeLabel(99)).toBe('99');
   });
 
+  it('names a shade by the hub list\'s current name, not the one it was added with', async () => {
+    // Added while the hub had no name for it, then named, then renamed in the
+    // PowerView app. The accessory keeps its first name; the log follows the hub.
+    const shades: Array<Record<string, unknown>> = [
+      { id: 1, name: '', type: 1, positions: { posKind1: 1, position1: 0 } },
+    ];
+    stubHub(shades);
+    const platform = new PowerViewPlatform(harness.log, config(), harness.api);
+    const poll = async () => {
+      const done = platform.updateShades();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await done;
+    };
+
+    await poll();
+    expect(platform.shadeLabel(1)).toBe('1');
+
+    shades[0].name = 'S2l0Y2hlbg=='; // "Kitchen"
+    await poll();
+    expect(platform.shadeLabel(1)).toBe('Kitchen (1)');
+
+    shades[0].name = 'UGFudHJ5'; // "Pantry"
+    await poll();
+    expect(platform.shadeLabel(1)).toBe('Pantry (1)');
+  });
+
   it('names a new shade from the hub list before it has an accessory', async () => {
     // Type 999 is undocumented, so the type warning fires while the accessory
     // is being created, before accessories has the shade.

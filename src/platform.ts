@@ -381,11 +381,14 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
   }
 
   /**
-   * Names a shade in a log line: `Transom North (8517)`. Uses the accessory's
-   * name, else the name from the last hub list, else the ID alone.
+   * Names a shade in a log line: `Transom North (8517)`. Uses the name from the
+   * last hub list, else the accessory's name, else the ID alone. The hub name
+   * comes first because the accessory keeps the name the shade was added with:
+   * a shade renamed in the PowerView app, or added before it had a name, would
+   * otherwise log under a stale name or the placeholder.
    */
   shadeLabel(shadeId: number): string {
-    return formatShadeLabel(shadeId, this.accessories.get(shadeId)?.displayName ?? this.hubShadeNames.get(shadeId));
+    return formatShadeLabel(shadeId, this.hubShadeNames.get(shadeId) ?? this.accessories.get(shadeId)?.displayName);
   }
 
   /** Names a scene in a log line: `Morning (3)`, or the ID alone. */
