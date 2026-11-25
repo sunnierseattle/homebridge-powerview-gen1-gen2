@@ -38,7 +38,30 @@ User-facing notes for **homebridge-powerview-gen1-gen2** releases. Use this file
 
 ---
 
-## Latest: 5.4.3 (2026-11-24)
+## Latest: 5.4.4 (2026-11-24)
+
+### Highlights
+
+- **Log lines name your shades.** `setPosition Stairs Blinds (40339)/1 = 100` instead of
+  `setPosition 40339/1 = 100`, so you no longer need to look ids up on the Shade tools page.
+
+### Changed
+
+- Every log line about one shade or scene leads with its name and puts the hub id in parentheses,
+  as `Transom North (8517)`: moves, stops, reported positions, scene activations, warnings and
+  errors. Lines that already showed the name use the same format, for example
+  `Cached shade Transom North (8517)`.
+- The name comes from the hub, so a shade renamed in the PowerView app shows its new name. A shade
+  with no name shows its id alone.
+
+### Notes
+
+- No config changes needed. If you search or filter your Homebridge log by shade id, the id is
+  still there, now in parentheses after the name.
+
+---
+
+## 5.4.3 (2026-11-24)
 
 ### Highlights
 
