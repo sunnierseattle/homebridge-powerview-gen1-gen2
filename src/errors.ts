@@ -50,7 +50,10 @@ export function formatError(error: unknown): string {
 
 /**
  * Logs an error with a message prefix using Homebridge's logging API.
+ *
+ * The message is an argument, not the format string: it can carry a shade or
+ * scene name, and a name with `%s` in it would otherwise be read as a placeholder.
  */
 export function logError(log: Logging, message: string, error: unknown): void {
-  log.error(message, formatError(error));
+  log.error('%s %s', message, formatError(error));
 }

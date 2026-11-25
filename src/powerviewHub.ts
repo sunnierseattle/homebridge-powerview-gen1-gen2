@@ -188,6 +188,9 @@ export class PowerViewHub {
   private seq = 0;
   private readonly requestIntervalMs: number;
 
+  /** Names a shade in log lines; the platform swaps in one that adds the shade's name. */
+  shadeLabel: (shadeId: number) => string = String;
+
   constructor(
     private readonly log: Logging,
     private readonly host: string,
@@ -553,7 +556,7 @@ export class PowerViewHub {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ shade: queued.data }),
         };
-        this.log.debug('Put for %d %s', queued.shadeId, JSON.stringify(queued.data));
+        this.log.debug('Put for %s %s', this.shadeLabel(queued.shadeId), JSON.stringify(queued.data));
       }
 
       const json = await this.fetchJson<{ shade: PowerViewShade }>(
@@ -567,7 +570,7 @@ export class PowerViewHub {
       }
     } catch (err) {
       const error = err instanceof Error ? err : new Error(formatError(err));
-      logError(this.log, `Error on shade request for shade ${queued.shadeId}:`, error);
+      logError(this.log, `Error on shade request for shade ${this.shadeLabel(queued.shadeId)}:`, error);
       for (const callback of queued.callbacks) {
         callback(error);
       }

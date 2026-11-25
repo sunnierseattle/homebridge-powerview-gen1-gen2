@@ -156,12 +156,14 @@ describe('ShadeTools', () => {
   let echoColor: boolean;
   /** What the hub answers to ?survey=true. {} is a shade that did not answer. */
   let surveyReply: unknown;
+  let activatedShades: number[];
 
   beforeEach(() => {
     vi.useFakeTimers();
     hubColor = { red: 0, green: 0, blue: 255, brightness: 50 };
     echoColor = true;
     surveyReply = { shade_id: 5, survey: [{ neighbor_id: 0, rssi: -64 }] };
+    activatedShades = [];
     fetchMock = vi.fn((url: string, init?: RequestInit) => {
       const u = String(url);
       if (u.includes('/api/userdata')) {
@@ -183,6 +185,9 @@ describe('ShadeTools', () => {
         return Promise.resolve(hubResponse({
           sceneMemberData: [{ id: 1, sceneId: 7, shadeId: 5, positions: { posKind1: 1, position1: 65535 } }],
         }));
+      }
+      if (u.includes('/api/scenes?sceneId=')) {
+        return Promise.resolve(hubResponse({ scene: { shadeIds: activatedShades } }));
       }
       if (u.includes('/api/scenes')) {
         return Promise.resolve(hubResponse({ sceneIds: [7], sceneData: [{ id: 7, name: 'T3Blbg==' }] }));
@@ -263,11 +268,21 @@ describe('ShadeTools', () => {
     await run(t.motion({ id: 5, motion: 'calibrate' }));
     await run(t.activateScene({ id: 7 }));
     expect(infoLines()).toEqual([
-      'position read sent to shade 5 (Kitchen)',
-      'jog sent to shade 5 (Kitchen)',
-      'calibrate sent to shade 5 (Kitchen)',
-      'scene 7 (Open) activated, moving shades none reported',
+      'position read sent to shade Kitchen (5)',
+      'jog sent to shade Kitchen (5)',
+      'calibrate sent to shade Kitchen (5)',
+      'scene Open (7) activated, moving shades none reported',
     ]);
+  });
+
+  it('names the shades a scene moved, or gives the id of one it has no name for', async () => {
+    const t = tools();
+    await run(t.shades());
+    await run(t.scenes());
+    activatedShades = [5, 9];
+    toolLog.info.mockClear();
+    await run(t.activateScene({ id: 7 }));
+    expect(infoLines()).toEqual(['scene Open (7) activated, moving shades Kitchen (5), 9']);
   });
 
   const colorPuts = () => fetchMock.mock.calls
@@ -338,8 +353,8 @@ describe('ShadeTools', () => {
     surveyReply = {};
     await run(t.signal({ id: 5 }));
     expect(infoLines()).toEqual([
-      'signal survey sent to shade 5 (Shade 5): -64 dBm',
-      'signal survey sent to shade 5 (Kitchen): no answer',
+      'signal survey sent to shade 5: -64 dBm',
+      'signal survey sent to shade Kitchen (5): no answer',
     ]);
   });
 

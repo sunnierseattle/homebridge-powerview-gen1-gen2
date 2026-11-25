@@ -4,7 +4,9 @@ import { HubPosition } from './powerviewHub.js';
 import {
   POSITION_KIND_ERROR,
   decodeBase64Name,
+  formatSceneLabel,
   formatShadeFirmware,
+  formatShadeLabel,
   isLowBattery,
   isSceneExcluded,
   isWithinQuietHours,
@@ -606,5 +608,28 @@ describe('positionsSettled', () => {
     expect(positionsSettled(undefined, { posKind1: 1, position1: 0 }, 655)).toBe(false);
     expect(positionsSettled({ posKind1: 1 }, { posKind1: 1 }, 655)).toBe(false);
     expect(positionsSettled({ posKind1: 1, position1: 0 }, { posKind1: 1, position2: 0 }, 655)).toBe(false);
+  });
+});
+
+describe('formatShadeLabel', () => {
+  it('puts the hub id after the name', () => {
+    expect(formatShadeLabel(8517, 'Transom North')).toBe('Transom North (8517)');
+    expect(formatShadeLabel(8517, '  Transom North ')).toBe('Transom North (8517)');
+  });
+
+  it('gives the id alone when no real name is known', () => {
+    expect(formatShadeLabel(8517)).toBe('8517');
+    expect(formatShadeLabel(8517, '')).toBe('8517');
+    expect(formatShadeLabel(8517, '   ')).toBe('8517');
+    // The placeholder for a shade the hub sent no name for only repeats the id.
+    expect(formatShadeLabel(8517, 'Shade 8517')).toBe('8517');
+  });
+});
+
+describe('formatSceneLabel', () => {
+  it('puts the hub id after the name, or gives the id alone', () => {
+    expect(formatSceneLabel(28446, 'Open Transom Blinds')).toBe('Open Transom Blinds (28446)');
+    expect(formatSceneLabel(28446)).toBe('28446');
+    expect(formatSceneLabel(28446, 'Scene 28446')).toBe('28446');
   });
 });

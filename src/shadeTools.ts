@@ -5,7 +5,9 @@ import { HubPosition, type HubColor, type PowerViewHub, type PowerViewShade } fr
 import {
   batteryStrengthToPercent,
   decodeBase64Name,
+  formatSceneLabel,
   formatShadeFirmware,
+  formatShadeLabel,
   parsePositionMap,
   resolveHubHost,
   resolveQuietHours,
@@ -255,7 +257,7 @@ export class ShadeTools {
   /** A real RF round-trip: the one read that says where the motor actually is. */
   async position(payload: unknown): Promise<ToolShade> {
     const shade = toolShade(await this.hub.getShade(requireId(payload), { refresh: true }));
-    this.log.info('position read sent to shade %d (%s)%s', shade.id, shade.name, shade.timedOut ? ': radio timed out' : '');
+    this.log.info('position read sent to shade %s%s', formatShadeLabel(shade.id, shade.name), shade.timedOut ? ': radio timed out' : '');
     return shade;
   }
 
@@ -266,13 +268,13 @@ export class ShadeTools {
   async signal(payload: unknown): Promise<ToolSignal> {
     const id = requireId(payload);
     const neighbors = await this.hub.surveyShade(id);
-    const name = this.names.get(id) ?? `Shade ${id}`;
+    const label = formatShadeLabel(id, this.names.get(id));
     if (!neighbors.length) {
-      this.log.info('signal survey sent to shade %d (%s): no answer', id, name);
+      this.log.info('signal survey sent to shade %s: no answer', label);
       return { id };
     }
     const rssi = Math.max(...neighbors.map((n) => n.rssi));
-    this.log.info('signal survey sent to shade %d (%s): %s', id, name, `${rssi} dBm`);
+    this.log.info('signal survey sent to shade %s: %s', label, `${rssi} dBm`);
     return { id, rssi };
   }
 
@@ -280,7 +282,7 @@ export class ShadeTools {
     const id = requireId(payload);
     const motion = requireMotion(payload);
     const shade = toolShade(motion === 'jog' ? await this.hub.jogShade(id) : await this.hub.calibrateShade(id));
-    this.log.info('%s sent to shade %d (%s)', motion, id, shade.name);
+    this.log.info('%s sent to shade %s', motion, formatShadeLabel(id, shade.name));
     return shade;
   }
 
@@ -304,8 +306,9 @@ export class ShadeTools {
   async activateScene(payload: unknown): Promise<{ shadeIds: number[] }> {
     const id = requireId(payload);
     const shadeIds = (await this.hub.activateScene(id)) ?? [];
-    this.log.info('scene %d (%s) activated, moving shades %s',
-      id, this.sceneNames.get(id) ?? 'unknown name', shadeIds.length ? shadeIds.join(', ') : 'none reported');
+    this.log.info('scene %s activated, moving shades %s',
+      formatSceneLabel(id, this.sceneNames.get(id)),
+      shadeIds.length ? shadeIds.map((s) => formatShadeLabel(s, this.names.get(s))).join(', ') : 'none reported');
     return { shadeIds };
   }
 }
