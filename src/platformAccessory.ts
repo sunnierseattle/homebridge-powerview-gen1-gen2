@@ -31,7 +31,7 @@ export class PowerViewPlatformAccessory {
     this.updateAccessoryInformation();
   }
 
-  /** `8517 (Transom North)`: how log lines name this shade. */
+  /** `Transom North (8517)`: how log lines name this shade. */
   private get label(): string {
     return this.platform.shadeLabel(this.shadeId);
   }

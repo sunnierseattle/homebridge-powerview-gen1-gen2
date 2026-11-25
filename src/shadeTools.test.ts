@@ -268,10 +268,10 @@ describe('ShadeTools', () => {
     await run(t.motion({ id: 5, motion: 'calibrate' }));
     await run(t.activateScene({ id: 7 }));
     expect(infoLines()).toEqual([
-      'position read sent to shade 5 (Kitchen)',
-      'jog sent to shade 5 (Kitchen)',
-      'calibrate sent to shade 5 (Kitchen)',
-      'scene 7 (Open) activated, moving shades none reported',
+      'position read sent to shade Kitchen (5)',
+      'jog sent to shade Kitchen (5)',
+      'calibrate sent to shade Kitchen (5)',
+      'scene Open (7) activated, moving shades none reported',
     ]);
   });
 
@@ -282,7 +282,7 @@ describe('ShadeTools', () => {
     activatedShades = [5, 9];
     toolLog.info.mockClear();
     await run(t.activateScene({ id: 7 }));
-    expect(infoLines()).toEqual(['scene 7 (Open) activated, moving shades 5 (Kitchen), 9']);
+    expect(infoLines()).toEqual(['scene Open (7) activated, moving shades Kitchen (5), 9']);
   });
 
   const colorPuts = () => fetchMock.mock.calls
@@ -353,8 +353,8 @@ describe('ShadeTools', () => {
     surveyReply = {};
     await run(t.signal({ id: 5 }));
     expect(infoLines()).toEqual([
-      'signal survey sent to shade 5 (Shade 5): -64 dBm',
-      'signal survey sent to shade 5 (Kitchen): no answer',
+      'signal survey sent to shade 5: -64 dBm',
+      'signal survey sent to shade Kitchen (5): no answer',
     ]);
   });
 

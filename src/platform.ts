@@ -52,6 +52,7 @@ import {
   resolveStopCommand,
   shadeKindForCapability,
   sanitizePositionMap,
+  formatSceneLabel,
   formatShadeLabel,
 } from './shadeUtils.js';
 import {
@@ -380,17 +381,16 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
   }
 
   /**
-   * Names a shade in a log line: `8517 (Transom North)`. Uses the accessory's
+   * Names a shade in a log line: `Transom North (8517)`. Uses the accessory's
    * name, else the name from the last hub list, else the ID alone.
    */
   shadeLabel(shadeId: number): string {
     return formatShadeLabel(shadeId, this.accessories.get(shadeId)?.displayName ?? this.hubShadeNames.get(shadeId));
   }
 
-  /** Names a scene in a log line: `3 (Morning)`, or the ID alone. */
+  /** Names a scene in a log line: `Morning (3)`, or the ID alone. */
   private sceneLabel(sceneId: number): string {
-    const name = this.sceneAccessories.get(sceneId)?.displayName;
-    return name ? `${sceneId} (${name})` : String(sceneId);
+    return formatSceneLabel(sceneId, this.sceneAccessories.get(sceneId)?.displayName);
   }
 
   cachePositions(shadeId: number, positions: PositionMap | null): void {
@@ -487,7 +487,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       const sceneId = (accessory.context as Partial<SceneContext>).sceneId;
       if (typeof sceneId === 'number' && Number.isFinite(sceneId)) {
         const sceneAccessory = accessory as PlatformAccessory<SceneContext>;
-        this.log.info('Cached scene %d: %s', sceneId, sceneAccessory.displayName);
+        this.log.info('Cached scene %s', formatSceneLabel(sceneId, sceneAccessory.displayName));
         this.wireSceneSwitch(sceneAccessory);
         this.sceneAccessories.set(sceneId, sceneAccessory);
         return;
@@ -504,7 +504,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
         return;
       }
 
-      this.log.info('Cached shade %d: %s', shadeId, shadeAccessory.displayName);
+      this.log.info('Cached shade %s', formatShadeLabel(shadeId, shadeAccessory.displayName));
 
       this.ensureWindowCoveringCategory(shadeAccessory);
 
@@ -558,7 +558,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
 
   private addShadeAccessory(shade: PowerViewShade): PlatformAccessory<ShadeContext> {
     const name = decodeBase64Name(shade.name, `Shade ${shade.id}`);
-    this.log.info('Adding shade %d: %s', shade.id, name);
+    this.log.info('Adding shade %s', formatShadeLabel(shade.id, name));
 
     const uuid = this.api.hap.uuid.generate(shade.id.toString());
     const accessory = new this.api.platformAccessory<ShadeContext>(
@@ -582,7 +582,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
   ): PlatformAccessory<ShadeContext> {
     // Debug, not info: this runs for every shade on every list refresh, so with
     // pollShadesForUpdate it floods the size-capped Homebridge log.
-    this.log.debug('Updating shade %d: %s', shade.id, accessory.displayName);
+    this.log.debug('Updating shade %s', this.shadeLabel(shade.id));
 
     const newType = this.shadeType(shade);
     const handler = this.handlers.get(shade.id);
@@ -598,7 +598,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
   }
 
   private removeShadeAccessory(accessory: PlatformAccessory<ShadeContext>): void {
-    this.log.info('Removing shade %d: %s', accessory.context.shadeId, accessory.displayName);
+    this.log.info('Removing shade %s', formatShadeLabel(accessory.context.shadeId, accessory.displayName));
     this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
     this.accessories.delete(accessory.context.shadeId);
     this.handlers.delete(accessory.context.shadeId);
@@ -686,9 +686,9 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
 
       if (misses < SHADE_REMOVAL_THRESHOLD) {
         this.log.warn(
-          'Shade %d (%s) missing from the hub list (%d/%d). Keeping it: a partial '
+          'Shade %s missing from the hub list (%d/%d). Keeping it: a partial '
           + 'response would otherwise destroy the accessory.',
-          id, accessory.displayName, misses, SHADE_REMOVAL_THRESHOLD,
+          formatShadeLabel(id, accessory.displayName), misses, SHADE_REMOVAL_THRESHOLD,
         );
         continue;
       }
@@ -1371,7 +1371,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
       // Left out of `seen`, so a scene excluded after it was published is
       // removed by the sweep below rather than lingering in HomeKit.
       if (isSceneExcluded(this.excludedScenes, scene.id, decodeBase64Name(scene.name, ''))) {
-        this.log.debug('Scene %d is in excludeScenes; not exposing it', scene.id);
+        this.log.debug('Scene %s is in excludeScenes; not exposing it', formatSceneLabel(scene.id, decodeBase64Name(scene.name, '')));
         continue;
       }
       seen.add(scene.id);
@@ -1388,7 +1388,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     this.warnUnmatchedExclusions(scenes);
     for (const [id, accessory] of [...this.sceneAccessories]) {
       if (!seen.has(id)) {
-        this.log.info('Removing scene %d: %s', id, accessory.displayName);
+        this.log.info('Removing scene %s', formatSceneLabel(id, accessory.displayName));
         this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
         this.sceneAccessories.delete(id);
       }
@@ -1408,7 +1408,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     try {
       members = await this.hub.getSceneMembers(sceneId);
     } catch (err) {
-      logError(this.log, `Could not read members of scene ${sceneId}:`, err);
+      logError(this.log, `Could not read members of scene ${this.sceneLabel(sceneId)}:`, err);
       return;
     }
 
@@ -1489,7 +1489,7 @@ export class PowerViewPlatform implements DynamicPlatformPlugin {
     // Only new switches get the prefix: renaming a cached accessory would undo
     // any name the user has since given it in the Home app.
     const name = this.sceneNamePrefix + decodeBase64Name(scene.name, `Scene ${scene.id}`);
-    this.log.info('Adding scene %d: %s', scene.id, name);
+    this.log.info('Adding scene %s', formatSceneLabel(scene.id, name));
 
     const uuid = this.api.hap.uuid.generate(`scene:${scene.id}`);
     const accessory = new this.api.platformAccessory<SceneContext>(name, uuid);

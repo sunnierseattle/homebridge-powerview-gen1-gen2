@@ -173,7 +173,9 @@ describe('PowerViewPlatform.updateShades', () => {
     await vi.advanceTimersByTimeAsync(5_000);
     await done;
 
-    expect(platform.shadeLabel(1)).toBe('1 (Shade)');
+    expect(platform.shadeLabel(1)).toBe('Shade (1)');
+    // Lines that always named the shade use the same name-first label.
+    expect(harness.log.info).toHaveBeenCalledWith('Adding shade %s', 'Shade (1)');
     expect(platform.shadeLabel(99)).toBe('99');
   });
 
@@ -188,7 +190,7 @@ describe('PowerViewPlatform.updateShades', () => {
     await done;
 
     expect(harness.log.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Shade %s has undocumented type %s'), '1 (Shade)', '999',
+      expect.stringContaining('Shade %s has undocumented type %s'), 'Shade (1)', '999',
     );
   });
 
@@ -231,8 +233,8 @@ describe('PowerViewPlatform.updateShades', () => {
       await done;
     }
 
-    expect(harness.log.info).not.toHaveBeenCalledWith('Updating shade %d: %s', 1, expect.anything());
-    expect(harness.log.debug).toHaveBeenCalledWith('Updating shade %d: %s', 1, expect.anything());
+    expect(harness.log.info).not.toHaveBeenCalledWith('Updating shade %s', 'Shade (1)');
+    expect(harness.log.debug).toHaveBeenCalledWith('Updating shade %s', 'Shade (1)');
   });
 });
 
@@ -825,7 +827,8 @@ describe('PowerViewPlatform scenes', () => {
 
     // 32768 of 65535 is 50%.
     expect(service?.getCharacteristic(Characteristic.CurrentPosition).value).toBe(50);
-    expect(harness.log.info).toHaveBeenCalledWith('Scene %s activated (%d shade(s)%s)', '7 (Closed)', 1, ': 1 (Shade)');
+    expect(harness.log.info).toHaveBeenCalledWith('Adding scene %s', 'Closed (7)');
+    expect(harness.log.info).toHaveBeenCalledWith('Scene %s activated (%d shade(s)%s)', 'Closed (7)', 1, ': Shade (1)');
   });
 
   it('leaves scenes listed in excludeScenes out of HomeKit', async () => {
@@ -1074,7 +1077,7 @@ describe('PowerViewPlatform healSweepIntervalMinutes', () => {
     await vi.advanceTimersByTimeAsync(61 * 60_000);
 
     expect(harness.log.info).toHaveBeenCalledWith(
-      '%s: shade %s was %j, now %j', 'Asking shades on schedule', '1 (One)', { 1: 100 }, { 1: 0 },
+      '%s: shade %s was %j, now %j', 'Asking shades on schedule', 'One (1)', { 1: 100 }, { 1: 0 },
     );
     expect(harness.log.info).toHaveBeenCalledWith('Asking shades on schedule: done, %d shade(s) corrected', 1);
   });
@@ -1147,9 +1150,9 @@ describe('PowerViewPlatform verifyAfterMove', () => {
     expect(rfReads()).toHaveLength(1);
     // The Home app now shows where the shade really is, not the target.
     expect(service?.getCharacteristic(Characteristic.CurrentPosition).value).toBe(0);
-    expect(harness.log.info).toHaveBeenCalledWith('%s: checking shade %s', 'Asking shades after a move', '1 (Shade)');
+    expect(harness.log.info).toHaveBeenCalledWith('%s: checking shade %s', 'Asking shades after a move', 'Shade (1)');
     // Same wording as a correction found when asking shades on schedule.
-    expect(harness.log.info).toHaveBeenCalledWith('%s: shade %s was %j, now %j', 'Asking shades after a move', '1 (Shade)', { 1: 80 }, { 1: 0 });
+    expect(harness.log.info).toHaveBeenCalledWith('%s: shade %s was %j, now %j', 'Asking shades after a move', 'Shade (1)', { 1: 80 }, { 1: 0 });
   });
 
   it('logs the check even when the shade is where HomeKit thought', async () => {
@@ -1158,9 +1161,9 @@ describe('PowerViewPlatform verifyAfterMove', () => {
     await set(platform, 0);
     await vi.advanceTimersByTimeAsync(35_000);
 
-    expect(harness.log.info).toHaveBeenCalledWith('%s: checking shade %s', 'Asking shades after a move', '1 (Shade)');
+    expect(harness.log.info).toHaveBeenCalledWith('%s: checking shade %s', 'Asking shades after a move', 'Shade (1)');
     expect(harness.log.info).not.toHaveBeenCalledWith(
-      '%s: shade %s was %j, now %j', 'Asking shades after a move', '1 (Shade)', expect.anything(), expect.anything(),
+      '%s: shade %s was %j, now %j', 'Asking shades after a move', 'Shade (1)', expect.anything(), expect.anything(),
     );
   });
 
@@ -1249,7 +1252,7 @@ describe('PowerViewPlatform verifyAfterMove', () => {
     expect(rfReads()).toEqual(['1']);
     await vi.advanceTimersByTimeAsync(3_000);
     expect(rfReads()).toEqual(['1', '2']);
-    expect(harness.log.info).toHaveBeenCalledWith('%s: shade %s was %j, now %j', 'Asking shades after a move', '2 (Two)', { 1: 100 }, { 1: 0 });
+    expect(harness.log.info).toHaveBeenCalledWith('%s: shade %s was %j, now %j', 'Asking shades after a move', 'Two (2)', { 1: 100 }, { 1: 0 });
   });
 });
 
