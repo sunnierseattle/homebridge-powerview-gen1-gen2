@@ -10,6 +10,9 @@ All notable changes to this project are documented in this file.
   state:`) is logged as one warning line, without a stack trace. The hub runs maintenance around
   00:30 and 01:00, answering HTTP 423 and then `fetch failed` for about a minute, and each failed
   poll printed a full stack. Retries are unchanged, and unexpected errors still log their stack.
+- A retry after the hub answers HTTP 423 (`Hub busy (HTTP 423), retrying in …`) is logged at debug,
+  not as a warning, like a retry after a dropped connection. A shade poll, move, scene or Shade
+  tools request that still fails after the last retry is logged as before.
 
 ## [5.4.2] - 2026-11-11
 

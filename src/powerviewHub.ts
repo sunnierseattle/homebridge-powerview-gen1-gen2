@@ -411,7 +411,7 @@ export class PowerViewHub {
           }
           lastError = err;
           if (attempt < retries - 1) {
-            this.log.warn(
+            this.log.debug(
               'Hub busy (HTTP 423), retrying in %dms (attempt %d/%d)',
               MAINTENANCE_RETRY_DELAY_MS,
               attempt + 1,
